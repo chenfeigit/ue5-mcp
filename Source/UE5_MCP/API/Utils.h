@@ -1,5 +1,6 @@
-﻿#pragma once
+#pragma once
 #include "JsonObjectConverter.h"
+#include <stdexcept>
 
 class Utils
 {

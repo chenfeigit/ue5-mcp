@@ -1,18 +1,20 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "UE5_MCP.h"
 
 #include "HttpServerModule.h"
+#include "IHttpRouter.h"
+#include "ISettingsModule.h"
+#include "Modules/ModuleManager.h"
 #include "UE5_MCPStyle.h"
 #include "UE5_MCPCommands.h"
+#include "UE5MCPSettings.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "ToolMenus.h"
 #include "UE5_MCP/API/Route.h"
 #include "Widgets/Input/SSpinBox.h"
-
-class IHttpRouter;
 static const FName UE5_MCPTabName("UE5_MCP");
 
 #define LOCTEXT_NAMESPACE "FUE5_MCPModule"
@@ -38,12 +40,47 @@ void FUE5_MCPModule::StartupModule()
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(UE5_MCPTabName, FOnSpawnTab::CreateRaw(this, &FUE5_MCPModule::OnSpawnPluginTab))
 		.SetDisplayName(LOCTEXT("FUE5_MCPTabTitle", "UE5_MCP"))
 		.SetMenuType(ETabSpawnerMenuType::Hidden);
+
+#if WITH_EDITOR
+	if (ISettingsModule* SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>("Settings"))
+	{
+		SettingsModule->RegisterSettings("Project", "Plugins", "UE5 MCP",
+			LOCTEXT("UE5MCPSettingsName", "UE5 MCP"),
+			LOCTEXT("UE5MCPSettingsDescription", "Configure the MCP HTTP server port and auto-start on editor launch."),
+			GetMutableDefault<UUE5MCPSettings>());
+	}
+#endif
+
+	const UUE5MCPSettings* Settings = GetDefault<UUE5MCPSettings>();
+	if (Settings->bAutoStartServer)
+	{
+		const int32 Port = Settings->ServerPort;
+		if (Port >= 1 && Port <= 65535)
+		{
+			TSharedPtr<IHttpRouter> Router = FHttpServerModule::Get().GetHttpRouter(Port);
+			Router::Bind(Router);
+			FHttpServerModule::Get().StartAllListeners();
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("UE5 MCP: Invalid ServerPort %d (must be 1-65535), server not started."), Port);
+		}
+	}
 }
 
 void FUE5_MCPModule::ShutdownModule()
 {
 	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
 	// we call this function before unloading the module.
+
+	FHttpServerModule::Get().StopAllListeners();
+
+#if WITH_EDITOR
+	if (ISettingsModule* SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>("Settings"))
+	{
+		SettingsModule->UnregisterSettings("Project", "Plugins", "UE5 MCP");
+	}
+#endif
 
 	UToolMenus::UnRegisterStartupCallback(this);
 
@@ -83,7 +120,7 @@ TSharedRef<SDockTab> FUE5_MCPModule::OnSpawnPluginTab(const FSpawnTabArgs& Spawn
 					SAssignNew(PortSpinBox, SSpinBox<int32>)
 					.MinValue(1)          // valid port range
 					.MaxValue(65535)
-					.Value(8080)          // default value
+					.Value(GetDefault<UUE5MCPSettings>()->ServerPort)
 				]
 	
 				// Button

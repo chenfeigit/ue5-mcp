@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -26,6 +26,7 @@ public class UE5_MCP : ModuleRules
 			new string[]
 			{
 				"Core",
+				"DeveloperSettings",
 				"Engine"
 				// ... add other public dependencies that you statically link with here ...
 			}
@@ -58,6 +59,7 @@ public class UE5_MCP : ModuleRules
 				"Kismet",       
 				"KismetCompiler",
 				"HttpServer",
+				"Settings",
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);
