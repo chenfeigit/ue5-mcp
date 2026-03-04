@@ -79,9 +79,12 @@ public:
 
 #pragma endregion
 
-	// Returns a list of supported node type names that can be added via AddNodeByNameToGraph
+	// Returns a list of supported node type names that can be added via AddNodeByNameToGraph (cached after first build).
 	static TArray<FString> GetSupportedNode();
-	
+
+	// Clears the supported nodes cache (e.g. after hot reload). Next GetSupportedNode() will rebuild.
+	static void InvalidateSupportedNodesCache();
+
 #pragma region PinOperations
 
 	// Connects two pins from two nodes in the specified Blueprint's graph

@@ -16,6 +16,8 @@ bool SetPinDefaultValueHandler(const FHttpServerRequest& Req, const FHttpResultC
 
 bool GetSupportedNodesHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete);
 
+bool RefreshSupportedNodesCacheHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete);
+
 bool AddGenericNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete);
 
 bool AddMakeStructNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete);

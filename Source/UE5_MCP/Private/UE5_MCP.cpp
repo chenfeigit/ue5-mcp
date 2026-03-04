@@ -53,6 +53,9 @@ bool FUE5_MCPModule::CheckPythonMCPDependencies(const FString& PythonPath, const
 
 void FUE5_MCPModule::TryStartPythonMCP()
 {
+	// If already running (or restarted), stop the previous process first
+	StopPythonMCP();
+
 	const UUE5MCPSettings* Settings = GetDefault<UUE5MCPSettings>();
 	if (!Settings->bAutoStartPythonMCP)
 	{
@@ -78,6 +81,28 @@ void FUE5_MCPModule::TryStartPythonMCP()
 		UE_LOG(LogTemp, Warning, TEXT("UE5 MCP: Script not found: %s"), *ScriptPath);
 		return;
 	}
+
+	// Kill any process already listening on PythonMCPPort (e.g. leftover from previous editor crash)
+#if PLATFORM_WINDOWS
+	{
+		FString CmdExe = FPlatformMisc::GetEnvironmentVariable(TEXT("COMSPEC"));
+		if (CmdExe.IsEmpty())
+		{
+			CmdExe = TEXT("cmd.exe");
+		}
+		FString CmdLine = FString::Printf(
+			TEXT("/c \"powershell -NoProfile -Command \\\"Get-NetTCPConnection -LocalPort %d -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }\\\"\""),
+			Port);
+		int32 DummyReturnCode = 0;
+		FPlatformProcess::ExecProcess(*CmdExe, *CmdLine, &DummyReturnCode, nullptr, nullptr, nullptr, false);
+	}
+#elif PLATFORM_LINUX || PLATFORM_MAC
+	{
+		FString ShParams = FString::Printf(TEXT("-c \"lsof -ti:%d | xargs kill -9 2>/dev/null\""), Port);
+		int32 DummyReturnCode = 0;
+		FPlatformProcess::ExecProcess(TEXT("/bin/sh"), *ShParams, &DummyReturnCode, nullptr, nullptr, nullptr, false);
+	}
+#endif
 
 	FString PythonPath = ResolvePythonExecutablePath();
 	FString WorkingDir = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Python"), TEXT("MCP"));

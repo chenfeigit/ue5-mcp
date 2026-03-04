@@ -195,7 +195,15 @@ bool GetSupportedNodesHandler(const FHttpServerRequest& Req, const FHttpResultCa
 		OnComplete(MoveTemp(Resp));
 		return true;
 	}
-	
+}
+
+bool RefreshSupportedNodesCacheHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete)
+{
+	GraphUtils::InvalidateSupportedNodesCache();
+	TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create("OK", TEXT("text/plain"));
+	Resp->Code = EHttpServerResponseCodes::Ok;
+	OnComplete(MoveTemp(Resp));
+	return true;
 }
 
 bool AddGenericNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete)

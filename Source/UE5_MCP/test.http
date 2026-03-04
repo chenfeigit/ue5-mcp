@@ -1,4 +1,4 @@
-﻿### Create Blueprint
+### Create Blueprint
 POST http://localhost:8080/create_bp
 Content-Type: application/json
 

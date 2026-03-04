@@ -61,6 +61,10 @@ void Router::Bind(TSharedPtr<IHttpRouter> Router)
 		EHttpServerRequestVerbs::VERB_GET,
 		FHttpRequestHandler::CreateStatic(GetSupportedNodesHandler));
 
+	Router->BindRoute(FHttpPath("/refresh_supported_nodes_cache"),
+		EHttpServerRequestVerbs::VERB_POST,
+		FHttpRequestHandler::CreateStatic(RefreshSupportedNodesCacheHandler));
+
 	Router->BindRoute(FHttpPath("/add_variable_to_bp"),
 		EHttpServerRequestVerbs::VERB_POST,
 		FHttpRequestHandler::CreateStatic(AddVariableToBPHandler));

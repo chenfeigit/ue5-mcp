@@ -1,6 +1,8 @@
 #include "PinUtils.h"
 
 #include "ClassUtils.h"
+#include "StructUtils.h"
+#include "EnumUtils.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_FunctionTerminator.h"
@@ -138,7 +140,7 @@ bool PinUtils::ResolvePinTypeByName(const FString& TypeStr, FEdGraphPinType& Out
     }
 
     // --- Structs ---
-    if (UScriptStruct* Struct = FindObject<UScriptStruct>(nullptr, *CleanType))
+    if (UScriptStruct* Struct = StructUtils::FindStructByName(CleanType))
     {
         OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
         OutPinType.PinSubCategoryObject = Struct;
@@ -146,7 +148,7 @@ bool PinUtils::ResolvePinTypeByName(const FString& TypeStr, FEdGraphPinType& Out
     }
 
     // --- Enums ---
-    if (UEnum* Enum = FindObject<UEnum>(nullptr, *CleanType))
+    if (UEnum* Enum = EnumUtils::FindEnumByName(CleanType))
     {
         OutPinType.PinCategory = UEdGraphSchema_K2::PC_Byte;
         OutPinType.PinSubCategoryObject = Enum;

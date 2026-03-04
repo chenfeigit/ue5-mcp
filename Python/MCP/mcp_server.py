@@ -213,9 +213,26 @@ def compile_blueprint(bp_path: str) -> str:
 
 @mcp.tool()
 def get_supported_nodes() -> str:
-    """Get the list of supported nodes for the Blueprint system."""
+    """Get the list of supported node identifiers for the Blueprint system.
+
+    Returns a JSON array of strings. Entries may be:
+    - K2 node class names (e.g. 'K2Node_CallFunction', 'K2Node_MapForEach'),
+    - Macro names from engine StandardMacros (e.g. 'ForEachLoop'),
+    - Library function entries in the form 'ClassName::FunctionName' (e.g. 'Engine.BlueprintMapLibrary::Map_Add').
+
+    All entries can be added via add_generic_node_to_graph(bp_path, graph_name, node_type_name)
+    using the exact string from this list as node_type_name (one unified interface).
+    """
     url = f"{BASE_URL}/get_supported_nodes"
     response = httpx.get(url)
+    return response.text
+
+
+@mcp.tool()
+def refresh_supported_nodes_cache() -> str:
+    """Clear the supported-nodes cache. Next get_supported_nodes() will rebuild the list (e.g. after hot reload)."""
+    url = f"{BASE_URL}/refresh_supported_nodes_cache"
+    response = httpx.post(url)
     return response.text
 
 
@@ -333,14 +350,15 @@ def set_pin_default_value(bp_path: str, graph_name: str, node_id: str, pin_name:
 
 @mcp.tool()
 def add_generic_node_to_graph(bp_path: str, graph_name: str, node_type_name: str) -> str:
-    """Add a generic node to the specified graph.
-    use this for nodes that do not require extra info and not covered by other specific node adding tools.
-    if existing tool for specific node type, use that instead.
+    """Add a node to the specified graph by type name (unified interface for all supported nodes).
+
+    Use this for any entry returned by get_supported_nodes: K2 node class names, macro names,
+    or library function entries (ClassName::FunctionName, e.g. 'Engine.BlueprintMapLibrary::Map_Add').
+    If a dedicated tool exists for a specific node type, you may use that instead.
 
     bp_path: Must be a valid Blueprint path.
-    graph_name: Must be a valid graph name (e.g., 'EventGraph').
-    node_type_name: Must be a valid node type name (e.g., 'K2Node_PlayAnimation', 'K2Node_IfThenElse').
-    node_type_name can be found in the supported nodes from tool: get_supported_nodes.
+    graph_name: Must be a valid graph name (e.g. 'EventGraph').
+    node_type_name: Any string from get_supported_nodes (e.g. 'K2Node_IfThenElse', 'ForEachLoop', 'Engine.BlueprintMapLibrary::Map_Add').
     """
     url = f"{BASE_URL}/add_generic_node_to_graph"
     body = {"BpPath": bp_path, "GraphName": graph_name, "NodeTypeName": node_type_name}

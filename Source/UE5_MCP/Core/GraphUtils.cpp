@@ -2,8 +2,11 @@
 
 #include "BPUtils.h"
 #include "ClassUtils.h"
+#include "StructUtils.h"
+#include "EnumUtils.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraphNode_Comment.h"
+#include "EdGraphSchema_K2.h"
 #include "K2Node_BreakStruct.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CastByteToEnum.h"
@@ -15,10 +18,32 @@
 #include "K2Node_SwitchEnum.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
 #include "PinUtils.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "UObject/Field.h"
 
 const int32 GraphUtils::DefaultNewNodeSpacing = 400;
+
+namespace
+{
+	// Cache for get_supported_nodes (lazy-built, invalidate via InvalidateSupportedNodesCache)
+	static TArray<FString> GSupportedNodesCache;
+	static bool GSupportedNodesCacheValid = false;
+
+	/** Converts UClass path to Module.ClassName format compatible with ClassUtils::FindClassByName (e.g. Engine.BlueprintMapLibrary). */
+	static FString GetLibraryClassDisplayName(UClass* Class)
+	{
+		if (!Class) return FString();
+		FString Path = Class->GetPathName();
+		// Typical C++ class path: /Script/ModuleName.ClassName
+		if (Path.StartsWith(TEXT("/Script/")))
+		{
+			return Path.Mid(8);
+		}
+		return Class->GetName();
+	}
+}
 
 void GraphUtils::SetNewNodePosition(UEdGraph* Graph, UEdGraphNode* NewNode)
 {
@@ -234,9 +259,9 @@ void GraphUtils::AddBreakStructNodeToGraph(UBlueprint* Blueprint, UEdGraph* Grap
 	if (!Blueprint || !Graph)
 		throw std::runtime_error("Blueprint or Graph is null");
 
-	UScriptStruct* Struct = FindObject<UScriptStruct>(nullptr, *StructTypeName);
+	UScriptStruct* Struct = StructUtils::FindStructByName(StructTypeName);
 	if (!Struct)
-		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Struct %s not found"), *StructTypeName)));
+		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Struct %s not found (try Module.StructName or /Script/Module.StructName, e.g. /Script/Engine.FSkeletalMaterial)"), *StructTypeName)));
 
 	FGraphNodeCreator<UK2Node_BreakStruct> NodeCreator(*Graph);
 	UK2Node_BreakStruct* BreakStructNode = NodeCreator.CreateNode();
@@ -251,9 +276,9 @@ void GraphUtils::AddMakeStructNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph
 	if (!Blueprint || !Graph)
 		throw std::runtime_error("Blueprint or Graph is null");
 
-	UScriptStruct* Struct = FindObject<UScriptStruct>(nullptr, *StructTypeName);
+	UScriptStruct* Struct = StructUtils::FindStructByName(StructTypeName);
 	if (!Struct)
-		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Struct %s not found"), *StructTypeName)));
+		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Struct %s not found (try Module.StructName or /Script/Module.StructName, e.g. /Script/Engine.FSkeletalMaterial)"), *StructTypeName)));
 
 	FGraphNodeCreator<UK2Node_MakeStruct> NodeCreator(*Graph);
 	UK2Node_MakeStruct* MakeStructNode = NodeCreator.CreateNode();
@@ -282,9 +307,9 @@ void GraphUtils::AddSwitchEnumNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph
 	if (!Blueprint || !Graph)
 		throw std::runtime_error("Blueprint or Graph is null");
 
-	UEnum* Enum = FindObject<UEnum>(nullptr, *PinTypeName);
+	UEnum* Enum = EnumUtils::FindEnumByName(PinTypeName);
 	if (!Enum)
-		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Enum %s not found"), *PinTypeName)));
+		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Enum %s not found (try Module.EnumName or /Script/Module.EnumName, e.g. /Script/Engine.ECollisionChannel)"), *PinTypeName)));
 	
 	FGraphNodeCreator<UK2Node_SwitchEnum> NodeCreator(*Graph);
 	UK2Node_SwitchEnum* SwitchEnumNode = NodeCreator.CreateNode();
@@ -327,6 +352,20 @@ void GraphUtils::AddNodeByNameToGraph(UBlueprint* Blueprint, UEdGraph* Graph, co
 {
 	if (!Blueprint || !Graph)
 		throw std::runtime_error("Blueprint or Graph is null");
+
+	// Unified interface: "ClassName::FunctionName" adds a library function call node (same as add_function_call_to_graph)
+	TArray<FString> ClassAndFunc;
+	NodeTypeName.ParseIntoArray(ClassAndFunc, TEXT("::"), true);
+	if (ClassAndFunc.Num() == 2)
+	{
+		FString ClassToCall = ClassAndFunc[0].TrimStartAndEnd();
+		FString FunctionName = ClassAndFunc[1].TrimStartAndEnd();
+		if (!ClassToCall.IsEmpty() && !FunctionName.IsEmpty())
+		{
+			AddFunctionCallToGraph(Blueprint, Graph, ClassToCall, FunctionName);
+			return;
+		}
+	}
 
 	UClass* NewNodeClass = FindK2NodeClassByName(NodeTypeName);
 	if (NewNodeClass)
@@ -398,9 +437,9 @@ void GraphUtils::AddByteToEnumNodeCastToGraph(UBlueprint* Blueprint, UEdGraph* G
 	if (!Blueprint || !Graph)
 		throw std::runtime_error("Blueprint or Graph is null");
 
-	UEnum* Enum = FindObject<UEnum>(nullptr, *PinTypeName);
+	UEnum* Enum = EnumUtils::FindEnumByName(PinTypeName);
 	if (!Enum)
-		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Enum %s not found"), *PinTypeName)));
+		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Enum %s not found (try Module.EnumName or /Script/Module.EnumName, e.g. /Script/Engine.ECollisionChannel)"), *PinTypeName)));
 
 	FGraphNodeCreator<UK2Node_CastByteToEnum> NodeCreator(*Graph);
 	UK2Node_CastByteToEnum* CastNode = NodeCreator.CreateNode();
@@ -413,7 +452,14 @@ void GraphUtils::AddByteToEnumNodeCastToGraph(UBlueprint* Blueprint, UEdGraph* G
 
 TArray<FString> GraphUtils::GetSupportedNode()
 {
+	if (GSupportedNodesCacheValid)
+	{
+		return GSupportedNodesCache;
+	}
+
 	TArray<FString> NodeTypes;
+
+	// 1. K2 node class names
 	for (TObjectIterator<UClass> It; It; ++It)
 	{
 		UClass* Class = *It;
@@ -422,7 +468,8 @@ TArray<FString> GraphUtils::GetSupportedNode()
 			NodeTypes.Add(Class->GetName());
 		}
 	}
-	// Append macro graph names from engine StandardMacros so they appear in the same list as K2 nodes
+
+	// 2. Macro graph names from engine StandardMacros
 	UBlueprint* MacroBP = BPUtils::LoadBlueprint(StandardMacrosBlueprintPath);
 	if (MacroBP)
 	{
@@ -431,7 +478,38 @@ TArray<FString> GraphUtils::GetSupportedNode()
 			if (MacroGraph) NodeTypes.Add(MacroGraph->GetFName().ToString());
 		}
 	}
-	return NodeTypes;
+
+	// 3. Library functions: UBlueprintFunctionLibrary subclasses, each callable function as "ClassName::FunctionName"
+	UClass* BPLibClass = UBlueprintFunctionLibrary::StaticClass();
+	for (TObjectIterator<UClass> It; It; ++It)
+	{
+		UClass* Class = *It;
+		if (!Class->IsChildOf(BPLibClass) || Class->HasAnyClassFlags(CLASS_Abstract))
+		{
+			continue;
+		}
+		FString ClassDisplayName = GetLibraryClassDisplayName(Class);
+		if (ClassDisplayName.IsEmpty()) continue;
+
+		for (TFieldIterator<UFunction> FuncIt(Class, EFieldIteratorFlags::ExcludeSuper); FuncIt; ++FuncIt)
+		{
+			UFunction* Function = *FuncIt;
+			if (UEdGraphSchema_K2::CanUserKismetCallFunction(Function))
+			{
+				NodeTypes.Add(ClassDisplayName + TEXT("::") + Function->GetName());
+			}
+		}
+	}
+
+	GSupportedNodesCache = MoveTemp(NodeTypes);
+	GSupportedNodesCacheValid = true;
+	return GSupportedNodesCache;
+}
+
+void GraphUtils::InvalidateSupportedNodesCache()
+{
+	GSupportedNodesCacheValid = false;
+	GSupportedNodesCache.Empty();
 }
 
 UEdGraphNode* GraphUtils::GetNodeById(
