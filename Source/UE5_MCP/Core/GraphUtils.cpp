@@ -1,5 +1,6 @@
 #include "GraphUtils.h"
 
+#include "BPUtils.h"
 #include "ClassUtils.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraphNode_Comment.h"
@@ -9,6 +10,7 @@
 #include "K2Node_ClassDynamicCast.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_DynamicCast.h"
+#include "K2Node_MacroInstance.h"
 #include "K2Node_MakeStruct.h"
 #include "K2Node_SwitchEnum.h"
 #include "K2Node_VariableGet.h"
@@ -306,6 +308,20 @@ UClass* GraphUtils::FindK2NodeClassByName(const FString& NodeClassName)
 	return nullptr;
 }
 
+static const FString StandardMacrosBlueprintPath(TEXT("/Engine/EditorBlueprintResources/StandardMacros.StandardMacros"));
+
+UEdGraph* GraphUtils::FindMacroGraphByName(const FString& MacroGraphName)
+{
+	UBlueprint* MacroBP = BPUtils::LoadBlueprint(StandardMacrosBlueprintPath);
+	if (!MacroBP) return nullptr;
+	const FName TargetName(*MacroGraphName);
+	for (UEdGraph* MacroGraph : MacroBP->MacroGraphs)
+	{
+		if (MacroGraph && MacroGraph->GetFName() == TargetName)
+			return MacroGraph;
+	}
+	return nullptr;
+}
 
 void GraphUtils::AddNodeByNameToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& NodeTypeName)
 {
@@ -313,20 +329,34 @@ void GraphUtils::AddNodeByNameToGraph(UBlueprint* Blueprint, UEdGraph* Graph, co
 		throw std::runtime_error("Blueprint or Graph is null");
 
 	UClass* NewNodeClass = FindK2NodeClassByName(NodeTypeName);
-	if (!NewNodeClass)
-		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Node type %s not found"), *NodeTypeName)));
+	if (NewNodeClass)
+	{
+		auto NewNode = NewObject<UK2Node>(Graph, NewNodeClass);
+		if (!NewNode)
+			throw std::runtime_error("Failed to create node");
+		NewNode->CreateNewGuid();
+		NewNode->PostPlacedNewNode();
+		NewNode->AllocateDefaultPins();
+		SetNewNodePosition(Graph, NewNode);
+		Graph->AddNode(NewNode);
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		return;
+	}
 
-	auto NewNode = NewObject<UK2Node>(Graph, NewNodeClass);
-	if (!NewNode)
-		throw std::runtime_error("Failed to create node");
+	// Not a K2 class name; try resolving as a macro graph name (e.g. ForEachLoop, DoOnce)
+	UEdGraph* MacroGraph = FindMacroGraphByName(NodeTypeName);
+	if (MacroGraph)
+	{
+		FGraphNodeCreator<UK2Node_MacroInstance> NodeCreator(*Graph);
+		UK2Node_MacroInstance* MacroNode = NodeCreator.CreateNode();
+		MacroNode->SetMacroGraph(MacroGraph);
+		SetNewNodePosition(Graph, MacroNode);
+		NodeCreator.Finalize();
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		return;
+	}
 
-	NewNode->CreateNewGuid();
-	NewNode->PostPlacedNewNode();
-	NewNode->AllocateDefaultPins();
-	SetNewNodePosition(Graph, NewNode);
-	Graph->AddNode(NewNode);
-	
-	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Node type %s not found"), *NodeTypeName)));
 }
 
 void GraphUtils::AddDynamicCastNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& PinTypeName)
@@ -390,7 +420,15 @@ TArray<FString> GraphUtils::GetSupportedNode()
 		if (Class->IsChildOf(UK2Node::StaticClass()) && !Class->HasAnyClassFlags(CLASS_Abstract))
 		{
 			NodeTypes.Add(Class->GetName());
-			// UE_LOG(LogTemp, Log, TEXT("Found K2Node class: %s"), *Class->GetName());
+		}
+	}
+	// Append macro graph names from engine StandardMacros so they appear in the same list as K2 nodes
+	UBlueprint* MacroBP = BPUtils::LoadBlueprint(StandardMacrosBlueprintPath);
+	if (MacroBP)
+	{
+		for (UEdGraph* MacroGraph : MacroBP->MacroGraphs)
+		{
+			if (MacroGraph) NodeTypes.Add(MacroGraph->GetFName().ToString());
 		}
 	}
 	return NodeTypes;

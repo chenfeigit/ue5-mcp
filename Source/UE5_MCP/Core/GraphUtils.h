@@ -8,6 +8,9 @@ class GraphUtils
 
 	static UClass* FindK2NodeClassByName(const FString& NodeTypeName);
 
+	/** Resolves a macro graph by name from the engine StandardMacros blueprint. Returns nullptr if not found or load fails. */
+	static class UEdGraph* FindMacroGraphByName(const FString& MacroGraphName);
+
 	/** Places NewNode to the right of the rightmost existing node to avoid overlap. Used by all Add*ToGraph. */
 	static void SetNewNodePosition(UEdGraph* Graph, UEdGraphNode* NewNode);
 
