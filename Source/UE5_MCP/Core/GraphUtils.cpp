@@ -1,6 +1,7 @@
 #include "GraphUtils.h"
 
 #include "ClassUtils.h"
+#include "EdGraph/EdGraphNode.h"
 #include "EdGraphNode_Comment.h"
 #include "K2Node_BreakStruct.h"
 #include "K2Node_CallFunction.h"
@@ -15,7 +16,20 @@
 #include "PinUtils.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 
+const int32 GraphUtils::DefaultNewNodeSpacing = 400;
 
+void GraphUtils::SetNewNodePosition(UEdGraph* Graph, UEdGraphNode* NewNode)
+{
+	if (!Graph || !NewNode) return;
+	int32 MaxRight = 0;
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (Node == NewNode) continue;
+		MaxRight = FMath::Max(MaxRight, Node->NodePosX + FMath::Max(Node->NodeWidth, 1));
+	}
+	NewNode->NodePosX = MaxRight + DefaultNewNodeSpacing;
+	NewNode->NodePosY = 0;
+}
 
 void GraphUtils::AddFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& FunctionName)
 {
@@ -33,6 +47,7 @@ void GraphUtils::AddFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, 
     FGraphNodeCreator<UK2Node_CallFunction> NodeCreator(*Graph);
     UK2Node_CallFunction* CallFuncNode = NodeCreator.CreateNode();
     CallFuncNode->SetFromFunction(TargetFunction);
+    SetNewNodePosition(Graph, CallFuncNode);
     NodeCreator.Finalize();
 
     FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
@@ -55,6 +70,7 @@ void GraphUtils::AddFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, 
 	FGraphNodeCreator<UK2Node_CallFunction> NodeCreator(*Graph);
 	UK2Node_CallFunction* CallFuncNode = NodeCreator.CreateNode();
 	CallFuncNode->SetFromFunction(TargetFunction);
+	SetNewNodePosition(Graph, CallFuncNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 }
@@ -74,6 +90,7 @@ void GraphUtils::AddMathFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Gra
 	FGraphNodeCreator<UK2Node_CallFunction> NodeCreator(*Graph);
 	UK2Node_CallFunction* CallFuncNode = NodeCreator.CreateNode();
 	CallFuncNode->SetFromFunction(TargetFunction);
+	SetNewNodePosition(Graph, CallFuncNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 }
@@ -98,6 +115,7 @@ void GraphUtils::AddEventToGraph(UBlueprint* Blueprint,
     UK2Node_Event* EventNode = NodeCreator.CreateNode();
     EventNode->EventReference.SetFromField<UFunction>(EventFunc, true);
     EventNode->bOverrideFunction = true;
+    SetNewNodePosition(Graph, EventNode);
     NodeCreator.Finalize();
 
     FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
@@ -148,6 +166,7 @@ void GraphUtils::AddCustomEventToGraph(
         }
     }
 
+    SetNewNodePosition(Graph, CustomEventNode);
     NodeCreator.Finalize();
 
     FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
@@ -176,6 +195,7 @@ void GraphUtils::AddGetVariableNodeToGraph(
     FGraphNodeCreator<UK2Node_VariableGet> NodeCreator(*Graph);
     UK2Node_VariableGet* GetNode = NodeCreator.CreateNode();
     GetNode->VariableReference.SetSelfMember(*VarName);
+    SetNewNodePosition(Graph, GetNode);
     NodeCreator.Finalize();
     
     FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
@@ -198,12 +218,13 @@ void GraphUtils::AddSetVariableNodeToGraph(
         throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Variable %s not found in Blueprint class"), *VarName)));
     }
     
-    FGraphNodeCreator<UK2Node_VariableSet> NodeCreator(*Graph);
-    UK2Node_VariableSet* SetNode = NodeCreator.CreateNode();
-    SetNode->VariableReference.SetSelfMember(*VarName);
-    NodeCreator.Finalize();
+	FGraphNodeCreator<UK2Node_VariableSet> NodeCreator(*Graph);
+	UK2Node_VariableSet* SetNode = NodeCreator.CreateNode();
+	SetNode->VariableReference.SetSelfMember(*VarName);
+	SetNewNodePosition(Graph, SetNode);
+	NodeCreator.Finalize();
 
-    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 }
 
 void GraphUtils::AddBreakStructNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& StructTypeName)
@@ -218,6 +239,7 @@ void GraphUtils::AddBreakStructNodeToGraph(UBlueprint* Blueprint, UEdGraph* Grap
 	FGraphNodeCreator<UK2Node_BreakStruct> NodeCreator(*Graph);
 	UK2Node_BreakStruct* BreakStructNode = NodeCreator.CreateNode();
 	BreakStructNode->StructType = Struct;
+	SetNewNodePosition(Graph, BreakStructNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 }
@@ -234,6 +256,7 @@ void GraphUtils::AddMakeStructNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph
 	FGraphNodeCreator<UK2Node_MakeStruct> NodeCreator(*Graph);
 	UK2Node_MakeStruct* MakeStructNode = NodeCreator.CreateNode();
 	MakeStructNode->StructType = Struct;
+	SetNewNodePosition(Graph, MakeStructNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 }
@@ -246,6 +269,7 @@ void GraphUtils::AddCommentNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, c
 	FGraphNodeCreator<UEdGraphNode_Comment> NodeCreator(*Graph);
 	UEdGraphNode_Comment* CommentNode = NodeCreator.CreateNode();
 	CommentNode->NodeComment = CommentText;
+	SetNewNodePosition(Graph, CommentNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 }
@@ -299,6 +323,7 @@ void GraphUtils::AddNodeByNameToGraph(UBlueprint* Blueprint, UEdGraph* Graph, co
 	NewNode->CreateNewGuid();
 	NewNode->PostPlacedNewNode();
 	NewNode->AllocateDefaultPins();
+	SetNewNodePosition(Graph, NewNode);
 	Graph->AddNode(NewNode);
 	
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
@@ -317,6 +342,7 @@ void GraphUtils::AddDynamicCastNodeToGraph(UBlueprint* Blueprint, UEdGraph* Grap
 	FGraphNodeCreator<UK2Node_DynamicCast> NodeCreator(*Graph);
 	UK2Node_DynamicCast* CastNode = NodeCreator.CreateNode();
 	CastNode->TargetType = TargetClass;
+	SetNewNodePosition(Graph, CastNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 }
@@ -332,6 +358,7 @@ void GraphUtils::AddClassCastNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph,
 	FGraphNodeCreator<UK2Node_ClassDynamicCast> NodeCreator(*Graph);
 	UK2Node_ClassDynamicCast* CastNode = NodeCreator.CreateNode();
 	CastNode->TargetType = TargetClass;
+	SetNewNodePosition(Graph, CastNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 }
@@ -348,6 +375,7 @@ void GraphUtils::AddByteToEnumNodeCastToGraph(UBlueprint* Blueprint, UEdGraph* G
 	FGraphNodeCreator<UK2Node_CastByteToEnum> NodeCreator(*Graph);
 	UK2Node_CastByteToEnum* CastNode = NodeCreator.CreateNode();
 	CastNode->Enum = Enum;
+	SetNewNodePosition(Graph, CastNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 }
@@ -412,6 +440,26 @@ void GraphUtils::ConnectPins(
 
 	if (!OutPin || !InPin)
 		throw std::runtime_error("OutPin or InPin not found");
+
+	// When connecting Exec→Exec, if target has no exec input yet, place it to the right of source
+	if (OutPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec &&
+		InPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+	{
+		bool bTargetHasExecInput = false;
+		for (UEdGraphPin* P : InputNode->Pins)
+		{
+			if (P && P->Direction == EGPD_Input && P->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec && P->LinkedTo.Num() > 0)
+			{
+				bTargetHasExecInput = true;
+				break;
+			}
+		}
+		if (!bTargetHasExecInput)
+		{
+			InputNode->NodePosX = OutputNode->NodePosX + FMath::Max(OutputNode->NodeWidth, 1) + DefaultNewNodeSpacing;
+			InputNode->NodePosY = OutputNode->NodePosY;
+		}
+	}
 
 	OutPin->MakeLinkTo(InPin);
 

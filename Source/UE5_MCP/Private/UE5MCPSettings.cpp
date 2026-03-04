@@ -6,6 +6,10 @@ UUE5MCPSettings::UUE5MCPSettings()
 {
 	ServerPort = 8080;
 	bAutoStartServer = true;
+	bAutoStartPythonMCP = true;
+	PythonMCPPort = 9000;
+	PythonExecutablePath = FString();
+	bAutoInstallPythonMCPDependencies = false;
 }
 
 FName UUE5MCPSettings::GetCategoryName() const

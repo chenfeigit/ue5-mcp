@@ -7,6 +7,11 @@ class GraphUtils
 	static UEdGraphNode* GetNodeById(UEdGraph* Graph, const FGuid& NodeId);
 
 	static UClass* FindK2NodeClassByName(const FString& NodeTypeName);
+
+	/** Places NewNode to the right of the rightmost existing node to avoid overlap. Used by all Add*ToGraph. */
+	static void SetNewNodePosition(UEdGraph* Graph, UEdGraphNode* NewNode);
+
+	static const int32 DefaultNewNodeSpacing;
 public:
 	
 #pragma region AddNodes

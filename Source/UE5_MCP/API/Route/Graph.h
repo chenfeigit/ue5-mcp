@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "HttpServerRequest.h"
 
 
@@ -6,7 +6,7 @@ bool AddEventToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCall
 
 bool AddVariableToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete);
 
-bool AddFunctionCallToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete);;
+bool AddFunctionCallToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete);
 
 bool ConnectPinsHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete);
 
@@ -33,3 +33,5 @@ bool AddEnumCastNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpRes
 bool AddMathNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete);
 
 bool AddCommentNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete);
+
+bool LayoutGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete);

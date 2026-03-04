@@ -1,4 +1,4 @@
-﻿#include "BP.h"
+#include "BP.h"
 
 #include "UE5_MCP/API/Utils.h"
 #include "UE5_MCP/API/DTO/BPComponentOperationReq.h"
@@ -104,8 +104,10 @@ bool GetGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallback& O
 		if (!Blueprint)
 			throw std::runtime_error("Failed to load Blueprint from path");
 		
-		auto Graph = BPUtils::GetEventGraph(Blueprint, *graphName);
-		
+		// Resolve graph: event graph (UbergraphPages) first, then function graph (FunctionGraphs)
+		UEdGraph* Graph = BPUtils::GetEventGraph(Blueprint, *graphName);
+		if (!Graph)
+			Graph = BPUtils::GetFunctionGraph(Blueprint, *graphName);
 		if (!Graph)
 			throw std::runtime_error("Graph not found");
 		

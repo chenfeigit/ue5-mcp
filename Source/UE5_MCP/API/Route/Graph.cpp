@@ -1,7 +1,9 @@
-﻿#include "Graph.h"
+#include "Graph.h"
 
 #include "UE5_MCP/API/Utils.h"
 #include "UE5_MCP/API/DTO/Graph/AddEventToGraphReq.h"
+#include "UE5_MCP/API/DTO/Graph/GraphOperationReq.h"
+#include "UE5_MCP/Core/Layout/BlueprintGraphLayout.h"
 #include "UE5_MCP/API/DTO/Graph/AddFunctionCallToGraphReq.h"
 #include "UE5_MCP/API/DTO/Graph/AddVariableToGraphReq.h"
 #include "UE5_MCP/API/DTO/Graph/GenericAddNodeToGraphReq.h"
@@ -10,23 +12,28 @@
 #include "UE5_MCP/Core/BPUtils.h"
 #include "UE5_MCP/Core/GraphUtils.h"
 
+/** Resolve graph by name: event graph (UbergraphPages) first, then function graph (FunctionGraphs). */
+static UEdGraph* GetGraphByName(UBlueprint* BP, const FString& GraphName)
+{
+	if (!BP) return nullptr;
+	UEdGraph* G = BPUtils::GetEventGraph(BP, GraphName);
+	if (!G) G = BPUtils::GetFunctionGraph(BP, GraphName);
+	return G;
+}
 
 bool AddEventToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete)
 {
 	try
 	{
 		FAddEventToGraphReq body = Utils::BufferToJson<FAddEventToGraphReq>(Req.Body);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph)
+			throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
 		if (body.bIsCustomEvent)
-			GraphUtils::AddCustomEventToGraph(
-				BPUtils::LoadBlueprint(body.BpPath),
-				BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath), body.GraphName),
-				body.EventName,
-				body.EventSignature);
+			GraphUtils::AddCustomEventToGraph(BP, Graph, body.EventName, body.EventSignature);
 		else
-			GraphUtils::AddEventToGraph(
-				BPUtils::LoadBlueprint(body.BpPath),
-				BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath), body.GraphName),
-				body.EventName);
+			GraphUtils::AddEventToGraph(BP, Graph, body.EventName);
 	} catch (std::runtime_error& e)
 	{
 		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(
@@ -47,16 +54,14 @@ bool AddVariableToGraphHandler(const FHttpServerRequest& Req, const FHttpResultC
 	try
 	{
 		FAddVariableToGraphReq body = Utils::BufferToJson<FAddVariableToGraphReq>(Req.Body);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph)
+			throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
 		if (body.bIsSetter)
-			GraphUtils::AddSetVariableNodeToGraph(
-				BPUtils::LoadBlueprint(body.BpPath),
-				BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath), body.GraphName),
-				body.VarName);
+			GraphUtils::AddSetVariableNodeToGraph(BP, Graph, body.VarName);
 		else
-			GraphUtils::AddGetVariableNodeToGraph(
-				BPUtils::LoadBlueprint(body.BpPath),
-				BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath),body.GraphName),
-				body.VarName);
+			GraphUtils::AddGetVariableNodeToGraph(BP, Graph, body.VarName);
 	} catch (std::runtime_error& e)
 	{
 		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(
@@ -77,17 +82,13 @@ bool AddFunctionCallToGraphHandler(const FHttpServerRequest& Req, const FHttpRes
 	try
 	{
 		FAddFunctionCallToGraphReq body = Utils::BufferToJson<FAddFunctionCallToGraphReq>(Req.Body);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph) throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
 		if (body.ClassToCall.IsEmpty())
-			GraphUtils::AddFunctionCallToGraph(
-				BPUtils::LoadBlueprint(body.BpPath),
-				BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath), body.GraphName),
-				body.FunctionName);
+			GraphUtils::AddFunctionCallToGraph(BP, Graph, body.FunctionName);
 		else
-			GraphUtils::AddFunctionCallToGraph(
-				BPUtils::LoadBlueprint(body.BpPath),
-				BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath), body.GraphName),
-				body.ClassToCall,
-				body.FunctionName);
+			GraphUtils::AddFunctionCallToGraph(BP, Graph, body.ClassToCall, body.FunctionName);
 	} catch (std::runtime_error& e)
 	{
 		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(
@@ -107,14 +108,10 @@ bool ConnectPinsHandler(const FHttpServerRequest& Req, const FHttpResultCallback
 {
 	try {
 		FPinOperationReq body = Utils::BufferToJson<FPinOperationReq>(Req.Body);
-		GraphUtils::ConnectPins(
-			BPUtils::LoadBlueprint(body.BpPath),
-			BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath),
-				body.GraphName),
-			body.OutputNodeId,
-			body.OutputPinName,
-			body.InputNodeId,
-			body.InputPinName);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph) throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
+		GraphUtils::ConnectPins(BP, Graph, body.OutputNodeId, body.OutputPinName, body.InputNodeId, body.InputPinName);
 	} catch (std::runtime_error& e)
 	{
 		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(
@@ -134,14 +131,11 @@ bool BreakPinConnectionHandler(const FHttpServerRequest& Req, const FHttpResultC
 {
 	try {
 		FPinOperationReq body = Utils::BufferToJson<FPinOperationReq>(Req.Body);
-		GraphUtils::BreakPinConnection(
-			BPUtils::LoadBlueprint(body.BpPath),
-			BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath),
-				body.GraphName),
-			body.OutputNodeId,
-			body.OutputPinName,
-			body.InputNodeId,
-			body.InputPinName);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph)
+			throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
+		GraphUtils::BreakPinConnection(BP, Graph, body.OutputNodeId, body.OutputPinName, body.InputNodeId, body.InputPinName);
 	} catch (std::runtime_error& e)
 	{
 		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(
@@ -160,10 +154,13 @@ bool SetPinDefaultValueHandler(const FHttpServerRequest& Req, const FHttpResultC
 {
 	try {
 		FSetPinDefaultValueReq body = Utils::BufferToJson<FSetPinDefaultValueReq>(Req.Body);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph)
+			throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
 		GraphUtils::SetPinDefaultValue(
-			BPUtils::LoadBlueprint(body.BpPath),
-			BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath),
-				body.GraphName),
+			BP,
+			Graph,
 			body.NodeId,
 			body.PinName,
 			body.DefaultValue);
@@ -205,11 +202,10 @@ bool AddGenericNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpResu
 {
 	try {
 		FGenericAddNodeToGraphReq body = Utils::BufferToJson<FGenericAddNodeToGraphReq>(Req.Body);
-		GraphUtils::AddNodeByNameToGraph(
-			BPUtils::LoadBlueprint(body.BpPath),
-			BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath),
-				body.GraphName),
-			body.NodeTypeName);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph) throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
+		GraphUtils::AddNodeByNameToGraph(BP, Graph, body.NodeTypeName);
 	} catch (std::runtime_error& e)
 	{
 		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(
@@ -228,11 +224,11 @@ bool AddMakeStructNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpR
 {
 	try {
 		FGenericAddNodeToGraphReq body = Utils::BufferToJson<FGenericAddNodeToGraphReq>(Req.Body);
-		GraphUtils::AddMakeStructNodeToGraph(
-			BPUtils::LoadBlueprint(body.BpPath),
-			BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath),
-				body.GraphName),
-			body.ExtraInfo);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph)
+			throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
+		GraphUtils::AddMakeStructNodeToGraph(BP, Graph, body.ExtraInfo);
 	} catch (std::runtime_error& e)
 	{
 		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(
@@ -251,11 +247,11 @@ bool AddBreakStructNodeToGraphHandler(const FHttpServerRequest& Req, const FHttp
 {
 	try {
 		FGenericAddNodeToGraphReq body = Utils::BufferToJson<FGenericAddNodeToGraphReq>(Req.Body);
-		GraphUtils::AddBreakStructNodeToGraph(
-			BPUtils::LoadBlueprint(body.BpPath),
-			BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath),
-				body.GraphName),
-			body.ExtraInfo);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph)
+			throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
+		GraphUtils::AddBreakStructNodeToGraph(BP, Graph, body.ExtraInfo);
 	} catch (std::runtime_error& e)
 	{
 		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(
@@ -299,11 +295,11 @@ bool AddDynamicCastNodeToGraphHandler(const FHttpServerRequest& Req, const FHttp
 {
 	try {
 		FGenericAddNodeToGraphReq body = Utils::BufferToJson<FGenericAddNodeToGraphReq>(Req.Body);
-		GraphUtils::AddDynamicCastNodeToGraph(
-				BPUtils::LoadBlueprint(body.BpPath),
-				BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath),
-					body.GraphName),
-				body.ExtraInfo);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph)
+			throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
+		GraphUtils::AddDynamicCastNodeToGraph(BP, Graph, body.ExtraInfo);
 	} catch (std::runtime_error& e)
 	{
 		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(
@@ -322,11 +318,11 @@ bool AddClassCastNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpRe
 {
 	try {
 		FGenericAddNodeToGraphReq body = Utils::BufferToJson<FGenericAddNodeToGraphReq>(Req.Body);
-		GraphUtils::AddClassCastNodeToGraph(
-				BPUtils::LoadBlueprint(body.BpPath),
-				BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath),
-					body.GraphName),
-				body.ExtraInfo);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph)
+			throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
+		GraphUtils::AddClassCastNodeToGraph(BP, Graph, body.ExtraInfo);
 	} catch (std::runtime_error& e)
 	{
 		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(
@@ -345,11 +341,11 @@ bool AddEnumCastNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpRes
 {
 	try {
 		FGenericAddNodeToGraphReq body = Utils::BufferToJson<FGenericAddNodeToGraphReq>(Req.Body);
-		GraphUtils::AddByteToEnumNodeCastToGraph(
-				BPUtils::LoadBlueprint(body.BpPath),
-				BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath),
-					body.GraphName),
-				body.ExtraInfo);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph)
+			throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
+		GraphUtils::AddByteToEnumNodeCastToGraph(BP, Graph, body.ExtraInfo);
 	} catch (std::runtime_error& e)
 	{
 		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(
@@ -369,10 +365,11 @@ bool AddMathNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpResultC
 	try
 	{
 		FAddFunctionCallToGraphReq body = Utils::BufferToJson<FAddFunctionCallToGraphReq>(Req.Body);
-		GraphUtils::AddMathFunctionCallToGraph(
-				BPUtils::LoadBlueprint(body.BpPath),
-				BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath), body.GraphName),
-				body.FunctionName);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph)
+			throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
+		GraphUtils::AddMathFunctionCallToGraph(BP, Graph, body.FunctionName);
 	} catch (std::runtime_error& e)
 	{
 		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(
@@ -388,15 +385,40 @@ bool AddMathNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpResultC
 	return true;
 }
 
+bool LayoutGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete)
+{
+	try
+	{
+		FGraphOperationReq body = Utils::BufferToJson<FGraphOperationReq>(Req.Body);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph)
+			throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
+		FBlueprintGraphLayout::LayoutGraph(BP, Graph);
+	}
+	catch (std::runtime_error& e)
+	{
+		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(
+			FString::Printf(TEXT("Error: %s"), UTF8_TO_TCHAR(e.what())), TEXT("text/plain"));
+		Resp->Code = EHttpServerResponseCodes::ServerError;
+		OnComplete(MoveTemp(Resp));
+		return true;
+	}
+	TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create("OK", TEXT("text/plain"));
+	Resp->Code = EHttpServerResponseCodes::Ok;
+	OnComplete(MoveTemp(Resp));
+	return true;
+}
+
 bool AddCommentNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallback& OnComplete)
 {
 	try {
 		FGenericAddNodeToGraphReq body = Utils::BufferToJson<FGenericAddNodeToGraphReq>(Req.Body);
-		GraphUtils::AddCommentNodeToGraph(
-			BPUtils::LoadBlueprint(body.BpPath),
-			BPUtils::GetEventGraph(BPUtils::LoadBlueprint(body.BpPath),
-				body.GraphName),
-			body.ExtraInfo);
+		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UEdGraph* Graph = GetGraphByName(BP, body.GraphName);
+		if (!Graph)
+			throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Graph %s not found"), *body.GraphName)));
+		GraphUtils::AddCommentNodeToGraph(BP, Graph, body.ExtraInfo);
 	} catch (std::runtime_error& e)
 	{
 		TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(

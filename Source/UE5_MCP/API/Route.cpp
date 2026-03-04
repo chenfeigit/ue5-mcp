@@ -1,4 +1,4 @@
-﻿#include "Route.h"
+#include "Route.h"
 
 #include "HttpServerRequest.h"
 #include "IHttpRouter.h"
@@ -48,6 +48,10 @@ void Router::Bind(TSharedPtr<IHttpRouter> Router)
 	Router->BindRoute(FHttpPath("/get_graph"),
         EHttpServerRequestVerbs::VERB_GET,
         FHttpRequestHandler::CreateStatic(GetGraphHandler));
+
+	Router->BindRoute(FHttpPath("/layout_graph"),
+		EHttpServerRequestVerbs::VERB_POST,
+		FHttpRequestHandler::CreateStatic(LayoutGraphHandler));
 
 	Router->BindRoute(FHttpPath("/compile_blueprint"),
 		EHttpServerRequestVerbs::VERB_POST,

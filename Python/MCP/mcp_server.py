@@ -186,6 +186,20 @@ def get_graph(bp_path: str, graph_name: str) -> str:
 
 
 @mcp.tool()
+def layout_graph(bp_path: str, graph_name: str = "EventGraph") -> str:
+    """Run full graph layout on the specified Blueprint graph. Rearranges all nodes by exec flow, chains, and branches.
+    Call after adding nodes and connecting pins to get a readable layout. Supports event graphs and function graphs.
+
+    bp_path: Must be a valid Blueprint path
+    graph_name: Graph name (e.g. 'EventGraph' for event graph, or function name for function graph). Default: EventGraph
+    """
+    url = f"{BASE_URL}/layout_graph"
+    body = {"BpPath": bp_path, "GraphName": graph_name}
+    response = httpx.post(url, json=body)
+    return response.text
+
+
+@mcp.tool()
 def compile_blueprint(bp_path: str) -> str:
     """Compile the Blueprint.
 

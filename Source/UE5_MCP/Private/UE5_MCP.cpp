@@ -2,9 +2,13 @@
 
 #include "UE5_MCP.h"
 
+#include "HAL/PlatformProcess.h"
+#include "HAL/PlatformMisc.h"
 #include "HttpServerModule.h"
 #include "IHttpRouter.h"
+#include "Interfaces/IPluginManager.h"
 #include "ISettingsModule.h"
+#include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "UE5_MCPStyle.h"
 #include "UE5_MCPCommands.h"
@@ -15,9 +19,159 @@
 #include "ToolMenus.h"
 #include "UE5_MCP/API/Route.h"
 #include "Widgets/Input/SSpinBox.h"
+
 static const FName UE5_MCPTabName("UE5_MCP");
 
 #define LOCTEXT_NAMESPACE "FUE5_MCPModule"
+
+FString FUE5_MCPModule::ResolvePythonExecutablePath()
+{
+	const UUE5MCPSettings* Settings = GetDefault<UUE5MCPSettings>();
+	if (!Settings->PythonExecutablePath.IsEmpty())
+	{
+		return Settings->PythonExecutablePath;
+	}
+	return TEXT("python");
+}
+
+bool FUE5_MCPModule::CheckPythonMCPDependencies(const FString& PythonPath, const FString& WorkingDir)
+{
+	int32 ReturnCode = -1;
+	FString StdOut;
+	FString StdErr;
+	const FString Params = TEXT("-c \"import httpx; import mcp.server.fastmcp; import dotenv\"");
+	const bool bExecOk = FPlatformProcess::ExecProcess(
+		*PythonPath,
+		*Params,
+		&ReturnCode,
+		&StdOut,
+		&StdErr,
+		*WorkingDir,
+		false);
+	return bExecOk && ReturnCode == 0;
+}
+
+void FUE5_MCPModule::TryStartPythonMCP()
+{
+	const UUE5MCPSettings* Settings = GetDefault<UUE5MCPSettings>();
+	if (!Settings->bAutoStartPythonMCP)
+	{
+		return;
+	}
+	const int32 Port = Settings->PythonMCPPort;
+	if (Port < 1 || Port > 65535)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UE5 MCP: Invalid PythonMCPPort %d (must be 1-65535), Python MCP not started."), Port);
+		return;
+	}
+
+	TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("UE5_MCP"));
+	if (!Plugin.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UE5 MCP: Could not find plugin UE5_MCP, Python MCP not started."));
+		return;
+	}
+
+	FString ScriptPath = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Python"), TEXT("MCP"), TEXT("mcp_server.py"));
+	if (!FPaths::FileExists(ScriptPath))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UE5 MCP: Script not found: %s"), *ScriptPath);
+		return;
+	}
+
+	FString PythonPath = ResolvePythonExecutablePath();
+	FString WorkingDir = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Python"), TEXT("MCP"));
+
+	// Dependency check
+	bool bDepsOk = CheckPythonMCPDependencies(PythonPath, WorkingDir);
+	if (!bDepsOk && Settings->bAutoInstallPythonMCPDependencies)
+	{
+		// Try auto-install
+		FString RequirementsPath = FPaths::Combine(WorkingDir, TEXT("requirements.txt"));
+		if (FPaths::FileExists(RequirementsPath))
+		{
+			int32 PipReturnCode = -1;
+			FString PipOut;
+			FString PipErr;
+			const FString PipParams = TEXT("-m pip install -r requirements.txt");
+			if (FPlatformProcess::ExecProcess(*PythonPath, *PipParams, &PipReturnCode, &PipOut, &PipErr, *WorkingDir, false) && PipReturnCode == 0)
+			{
+				bDepsOk = CheckPythonMCPDependencies(PythonPath, WorkingDir);
+				if (!bDepsOk)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("UE5 MCP: Dependencies still missing after pip install. Install manually: pip install httpx mcp python-dotenv"));
+					return;
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("UE5 MCP: pip install failed (code %d). Install manually: pip install httpx mcp python-dotenv"), PipReturnCode);
+				return;
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("UE5 MCP: requirements.txt not found at %s"), *RequirementsPath);
+			return;
+		}
+	}
+	if (!bDepsOk)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UE5 MCP: Python dependencies missing. Install with: pip install httpx mcp python-dotenv"));
+		return;
+	}
+
+	// Save current env and set for child (cmd then python inherit on Windows)
+	FString SavedPort = FPlatformMisc::GetEnvironmentVariable(TEXT("PORT"));
+	FString SavedUE5RestApi = FPlatformMisc::GetEnvironmentVariable(TEXT("UE5_REST_API_URL"));
+	FPlatformMisc::SetEnvironmentVar(TEXT("PORT"), *FString::FromInt(Port));
+	FPlatformMisc::SetEnvironmentVar(TEXT("UE5_REST_API_URL"), *FString::Printf(TEXT("http://localhost:%d"), Settings->ServerPort));
+
+	// Launch via cmd.exe; python runs in background (no console window)
+	FString CmdExe = FPlatformMisc::GetEnvironmentVariable(TEXT("COMSPEC"));
+	if (CmdExe.IsEmpty())
+	{
+		CmdExe = TEXT("cmd.exe");
+	}
+	// /c "python_or_path mcp_server.py" — quote Python path if it contains spaces
+	FString CmdParams = FString::Printf(TEXT("/c \"\"%s\" mcp_server.py\""), *PythonPath);
+
+	uint32 ProcessID = 0;
+	PythonMCPProcessHandle = FPlatformProcess::CreateProc(
+		*CmdExe,
+		*CmdParams,
+		true,  // bLaunchDetached
+		true,  // bLaunchHidden = true so runs in background
+		false, // bLaunchReallyHidden
+		&ProcessID,
+		0,     // PriorityModifier
+		*WorkingDir,
+		nullptr,
+		nullptr);
+
+	// Restore env
+	FPlatformMisc::SetEnvironmentVar(TEXT("PORT"), SavedPort.IsEmpty() ? nullptr : *SavedPort);
+	FPlatformMisc::SetEnvironmentVar(TEXT("UE5_REST_API_URL"), SavedUE5RestApi.IsEmpty() ? nullptr : *SavedUE5RestApi);
+
+	if (!PythonMCPProcessHandle.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UE5 MCP: Failed to start Python MCP via cmd (Python: %s)"), *PythonPath);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("UE5 MCP: Started Python MCP on port %d via cmd (PID %u)"), Port, ProcessID);
+	}
+}
+
+void FUE5_MCPModule::StopPythonMCP()
+{
+	if (PythonMCPProcessHandle.IsValid())
+	{
+		FPlatformProcess::TerminateProc(PythonMCPProcessHandle, true);
+		FPlatformProcess::CloseProc(PythonMCPProcessHandle);
+		PythonMCPProcessHandle = FProcHandle();
+	}
+}
 
 void FUE5_MCPModule::StartupModule()
 {
@@ -66,13 +220,17 @@ void FUE5_MCPModule::StartupModule()
 			UE_LOG(LogTemp, Warning, TEXT("UE5 MCP: Invalid ServerPort %d (must be 1-65535), server not started."), Port);
 		}
 	}
+
+	TryStartPythonMCP();
 }
+
 
 void FUE5_MCPModule::ShutdownModule()
 {
 	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
 	// we call this function before unloading the module.
 
+	StopPythonMCP();
 	FHttpServerModule::Get().StopAllListeners();
 
 #if WITH_EDITOR
