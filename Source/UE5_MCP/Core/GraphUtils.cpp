@@ -60,31 +60,32 @@ void GraphUtils::SetNewNodePosition(UEdGraph* Graph, UEdGraphNode* NewNode)
 	NewNode->NodePosY = 0;
 }
 
-void GraphUtils::AddFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& FunctionName)
+UEdGraphNode* GraphUtils::AddFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& FunctionName)
 {
-    if (!Blueprint || !Graph)
-        throw std::runtime_error("Blueprint or Graph is null");
+	if (!Blueprint || !Graph)
+		throw std::runtime_error("Blueprint or Graph is null");
 
-    auto BPClass = Blueprint->GeneratedClass;
-    if (!BPClass)
-        throw std::runtime_error("Blueprint's GeneratedClass is null, please compile the Blueprint first");
+	auto BPClass = Blueprint->GeneratedClass;
+	if (!BPClass)
+		throw std::runtime_error("Blueprint's GeneratedClass is null, please compile the Blueprint first");
 
-    UFunction* TargetFunction = BPClass->FindFunctionByName(*FunctionName);
-    if (!TargetFunction && !FunctionName.StartsWith(TEXT("K2_")))
-        TargetFunction = BPClass->FindFunctionByName(*(FString(TEXT("K2_")) + FunctionName));
-    if (!TargetFunction)
-        throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Function %s not found in Blueprint class"), *FunctionName)));
+	UFunction* TargetFunction = BPClass->FindFunctionByName(*FunctionName);
+	if (!TargetFunction && !FunctionName.StartsWith(TEXT("K2_")))
+		TargetFunction = BPClass->FindFunctionByName(*(FString(TEXT("K2_")) + FunctionName));
+	if (!TargetFunction)
+		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Function %s not found in Blueprint class"), *FunctionName)));
 
-    FGraphNodeCreator<UK2Node_CallFunction> NodeCreator(*Graph);
-    UK2Node_CallFunction* CallFuncNode = NodeCreator.CreateNode();
-    CallFuncNode->SetFromFunction(TargetFunction);
-    SetNewNodePosition(Graph, CallFuncNode);
-    NodeCreator.Finalize();
+	FGraphNodeCreator<UK2Node_CallFunction> NodeCreator(*Graph);
+	UK2Node_CallFunction* CallFuncNode = NodeCreator.CreateNode();
+	CallFuncNode->SetFromFunction(TargetFunction);
+	SetNewNodePosition(Graph, CallFuncNode);
+	NodeCreator.Finalize();
 
-    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return CallFuncNode;
 }
 
-void GraphUtils::AddFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& ClassToCall,
+UEdGraphNode* GraphUtils::AddFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& ClassToCall,
 	const FString& FunctionName)
 {
 	if (!Blueprint || !Graph)
@@ -106,9 +107,10 @@ void GraphUtils::AddFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, 
 	SetNewNodePosition(Graph, CallFuncNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return CallFuncNode;
 }
 
-void GraphUtils::AddMathFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& FunctionName)
+UEdGraphNode* GraphUtils::AddMathFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& FunctionName)
 {
 	if (!Blueprint || !Graph)
 		throw std::runtime_error("Blueprint or Graph is null");
@@ -119,134 +121,138 @@ void GraphUtils::AddMathFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Gra
 		TargetFunction = MathClass->FindFunctionByName(*(FString(TEXT("K2_")) + FunctionName));
 	if (!TargetFunction)
 		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Function %s not found in KismetMathLibrary"), *FunctionName)));
-	
+
 	FGraphNodeCreator<UK2Node_CallFunction> NodeCreator(*Graph);
 	UK2Node_CallFunction* CallFuncNode = NodeCreator.CreateNode();
 	CallFuncNode->SetFromFunction(TargetFunction);
 	SetNewNodePosition(Graph, CallFuncNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return CallFuncNode;
 }
 
 
 
-void GraphUtils::AddEventToGraph(UBlueprint* Blueprint,
-                                 UEdGraph* Graph, const FString& EventName)
+UEdGraphNode* GraphUtils::AddEventToGraph(UBlueprint* Blueprint,
+	UEdGraph* Graph, const FString& EventName)
 {
-    if (!Blueprint || !Graph)
-        throw std::runtime_error("Blueprint or Graph is null");
-    
-    UClass* BPClass = Blueprint->GeneratedClass;
-    if (!BPClass)
-        throw std::runtime_error("Blueprint's GeneratedClass is null, please compile the Blueprint first");
-    
-    auto EventFunc = BPClass->FindFunctionByName(*EventName);
-    if (!EventFunc)
-        throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Event %s not found in Blueprint class"), *EventName)));
-    
-    FGraphNodeCreator<UK2Node_Event> NodeCreator(*Graph);
-    UK2Node_Event* EventNode = NodeCreator.CreateNode();
-    EventNode->EventReference.SetFromField<UFunction>(EventFunc, true);
-    EventNode->bOverrideFunction = true;
-    SetNewNodePosition(Graph, EventNode);
-    NodeCreator.Finalize();
+	if (!Blueprint || !Graph)
+		throw std::runtime_error("Blueprint or Graph is null");
 
-    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	UClass* BPClass = Blueprint->GeneratedClass;
+	if (!BPClass)
+		throw std::runtime_error("Blueprint's GeneratedClass is null, please compile the Blueprint first");
+
+	auto EventFunc = BPClass->FindFunctionByName(*EventName);
+	if (!EventFunc)
+		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Event %s not found in Blueprint class"), *EventName)));
+
+	FGraphNodeCreator<UK2Node_Event> NodeCreator(*Graph);
+	UK2Node_Event* EventNode = NodeCreator.CreateNode();
+	EventNode->EventReference.SetFromField<UFunction>(EventFunc, true);
+	EventNode->bOverrideFunction = true;
+	SetNewNodePosition(Graph, EventNode);
+	NodeCreator.Finalize();
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return EventNode;
 }
 
-void GraphUtils::AddCustomEventToGraph(
-    UBlueprint* Blueprint,
-    UEdGraph* Graph,
-    const FString& EventName,
-    const FString& EventSignature)
+UEdGraphNode* GraphUtils::AddCustomEventToGraph(
+	UBlueprint* Blueprint,
+	UEdGraph* Graph,
+	const FString& EventName,
+	const FString& EventSignature)
 {
-    if (!Blueprint || !Graph) return;
+	if (!Blueprint || !Graph)
+		throw std::runtime_error("Blueprint or Graph is null");
 
-    // Create the node
-    FGraphNodeCreator<UK2Node_CustomEvent> NodeCreator(*Graph);
-    UK2Node_CustomEvent* CustomEventNode = NodeCreator.CreateNode();
-    CustomEventNode->CustomFunctionName = *EventName;
+	// Create the node
+	FGraphNodeCreator<UK2Node_CustomEvent> NodeCreator(*Graph);
+	UK2Node_CustomEvent* CustomEventNode = NodeCreator.CreateNode();
+	CustomEventNode->CustomFunctionName = *EventName;
 
-    // Always has execution pin
-    CustomEventNode->AllocateDefaultPins();
+	// Always has execution pin
+	CustomEventNode->AllocateDefaultPins();
 
-    TArray<FString> Params;
-    FEdGraphPinType PinType;
-    EventSignature.ParseIntoArray(Params, TEXT(","), true);
-    for (FString& Param : Params)
-    {
-        FString TypeStr, NameStr;
-        if (!PinUtils::SplitTypeVar(Param, TypeStr, NameStr))
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Invalid parameter: %s"), *Param);
-            continue;
-        }
-        
-        NameStr = NameStr.TrimStartAndEnd();
-        if (NameStr.IsEmpty())
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Invalid parameter: %s"), *Param);
-            continue;
-        }
-            
-        if (PinUtils::ResolvePinTypeByName(TypeStr, PinType))
-        {
-            CustomEventNode->CreateUserDefinedPin(*NameStr, PinType, EGPD_Output);
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Unknown type: %s"), *TypeStr);
-        }
-    }
+	TArray<FString> Params;
+	FEdGraphPinType PinType;
+	EventSignature.ParseIntoArray(Params, TEXT(","), true);
+	for (FString& Param : Params)
+	{
+		FString TypeStr, NameStr;
+		if (!PinUtils::SplitTypeVar(Param, TypeStr, NameStr))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Invalid parameter: %s"), *Param);
+			continue;
+		}
 
-    SetNewNodePosition(Graph, CustomEventNode);
-    NodeCreator.Finalize();
+		NameStr = NameStr.TrimStartAndEnd();
+		if (NameStr.IsEmpty())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Invalid parameter: %s"), *Param);
+			continue;
+		}
 
-    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		if (PinUtils::ResolvePinTypeByName(TypeStr, PinType))
+		{
+			CustomEventNode->CreateUserDefinedPin(*NameStr, PinType, EGPD_Output);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Unknown type: %s"), *TypeStr);
+		}
+	}
+
+	SetNewNodePosition(Graph, CustomEventNode);
+	NodeCreator.Finalize();
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return CustomEventNode;
 }
 
-void GraphUtils::AddGetVariableNodeToGraph(
-    UBlueprint* Blueprint, UEdGraph* Graph, const FString& VarName)
+UEdGraphNode* GraphUtils::AddGetVariableNodeToGraph(
+	UBlueprint* Blueprint, UEdGraph* Graph, const FString& VarName)
 {
-    if (!Blueprint || !Graph)
-        throw std::runtime_error("Blueprint or Graph is null");
+	if (!Blueprint || !Graph)
+		throw std::runtime_error("Blueprint or Graph is null");
 
-    auto BPClass = Blueprint->GeneratedClass;
-    if (!BPClass)
-        throw std::runtime_error("Blueprint's GeneratedClass is null, please compile the Blueprint first");
+	auto BPClass = Blueprint->GeneratedClass;
+	if (!BPClass)
+		throw std::runtime_error("Blueprint's GeneratedClass is null, please compile the Blueprint first");
 
-    auto Var = BPClass->FindPropertyByName(*VarName);
-    if ( !Var)
-    {
-        throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Variable %s not found in Blueprint class"), *VarName)));
-    }
+	auto Var = BPClass->FindPropertyByName(*VarName);
+	if (!Var)
+	{
+		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Variable %s not found in Blueprint class"), *VarName)));
+	}
 
-    FGraphNodeCreator<UK2Node_VariableGet> NodeCreator(*Graph);
-    UK2Node_VariableGet* GetNode = NodeCreator.CreateNode();
-    GetNode->VariableReference.SetSelfMember(*VarName);
-    SetNewNodePosition(Graph, GetNode);
-    NodeCreator.Finalize();
-    
-    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	FGraphNodeCreator<UK2Node_VariableGet> NodeCreator(*Graph);
+	UK2Node_VariableGet* GetNode = NodeCreator.CreateNode();
+	GetNode->VariableReference.SetSelfMember(*VarName);
+	SetNewNodePosition(Graph, GetNode);
+	NodeCreator.Finalize();
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return GetNode;
 }
 
-void GraphUtils::AddSetVariableNodeToGraph(
-    UBlueprint* Blueprint, UEdGraph* Graph, const FString& VarName)
+UEdGraphNode* GraphUtils::AddSetVariableNodeToGraph(
+	UBlueprint* Blueprint, UEdGraph* Graph, const FString& VarName)
 {
-    if (!Blueprint || !Graph)
-        throw std::runtime_error("Blueprint or Graph is null");
+	if (!Blueprint || !Graph)
+		throw std::runtime_error("Blueprint or Graph is null");
 
-    
-    auto BPClass = Blueprint->GeneratedClass;
-    if (!BPClass)
-        throw std::runtime_error("Blueprint's GeneratedClass is null, please compile the Blueprint first");
+	auto BPClass = Blueprint->GeneratedClass;
+	if (!BPClass)
+		throw std::runtime_error("Blueprint's GeneratedClass is null, please compile the Blueprint first");
 
-    auto Var = BPClass->FindPropertyByName(*VarName);
-    if ( !Var)
-    {
-        throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Variable %s not found in Blueprint class"), *VarName)));
-    }
-    
+	auto Var = BPClass->FindPropertyByName(*VarName);
+	if (!Var)
+	{
+		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Variable %s not found in Blueprint class"), *VarName)));
+	}
+
 	FGraphNodeCreator<UK2Node_VariableSet> NodeCreator(*Graph);
 	UK2Node_VariableSet* SetNode = NodeCreator.CreateNode();
 	SetNode->VariableReference.SetSelfMember(*VarName);
@@ -254,9 +260,10 @@ void GraphUtils::AddSetVariableNodeToGraph(
 	NodeCreator.Finalize();
 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return SetNode;
 }
 
-void GraphUtils::AddBreakStructNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& StructTypeName)
+UEdGraphNode* GraphUtils::AddBreakStructNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& StructTypeName)
 {
 	if (!Blueprint || !Graph)
 		throw std::runtime_error("Blueprint or Graph is null");
@@ -271,9 +278,10 @@ void GraphUtils::AddBreakStructNodeToGraph(UBlueprint* Blueprint, UEdGraph* Grap
 	SetNewNodePosition(Graph, BreakStructNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return BreakStructNode;
 }
 
-void GraphUtils::AddMakeStructNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& StructTypeName)
+UEdGraphNode* GraphUtils::AddMakeStructNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& StructTypeName)
 {
 	if (!Blueprint || !Graph)
 		throw std::runtime_error("Blueprint or Graph is null");
@@ -288,9 +296,10 @@ void GraphUtils::AddMakeStructNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph
 	SetNewNodePosition(Graph, MakeStructNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return MakeStructNode;
 }
 
-void GraphUtils::AddCommentNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& CommentText)
+UEdGraphNode* GraphUtils::AddCommentNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& CommentText)
 {
 	if (!Blueprint || !Graph)
 		throw std::runtime_error("Blueprint or Graph is null");
@@ -301,6 +310,7 @@ void GraphUtils::AddCommentNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, c
 	SetNewNodePosition(Graph, CommentNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return CommentNode;
 }
 
 /*
@@ -350,7 +360,7 @@ UEdGraph* GraphUtils::FindMacroGraphByName(const FString& MacroGraphName)
 	return nullptr;
 }
 
-void GraphUtils::AddNodeByNameToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& NodeTypeName)
+UEdGraphNode* GraphUtils::AddNodeByNameToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& NodeTypeName)
 {
 	if (!Blueprint || !Graph)
 		throw std::runtime_error("Blueprint or Graph is null");
@@ -364,8 +374,7 @@ void GraphUtils::AddNodeByNameToGraph(UBlueprint* Blueprint, UEdGraph* Graph, co
 		FString FunctionName = ClassAndFunc[1].TrimStartAndEnd();
 		if (!ClassToCall.IsEmpty() && !FunctionName.IsEmpty())
 		{
-			AddFunctionCallToGraph(Blueprint, Graph, ClassToCall, FunctionName);
-			return;
+			return AddFunctionCallToGraph(Blueprint, Graph, ClassToCall, FunctionName);
 		}
 	}
 
@@ -381,7 +390,7 @@ void GraphUtils::AddNodeByNameToGraph(UBlueprint* Blueprint, UEdGraph* Graph, co
 		SetNewNodePosition(Graph, NewNode);
 		Graph->AddNode(NewNode);
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
-		return;
+		return NewNode;
 	}
 
 	// Not a K2 class name; try resolving as a macro graph name (e.g. ForEachLoop, DoOnce)
@@ -394,13 +403,13 @@ void GraphUtils::AddNodeByNameToGraph(UBlueprint* Blueprint, UEdGraph* Graph, co
 		SetNewNodePosition(Graph, MacroNode);
 		NodeCreator.Finalize();
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
-		return;
+		return MacroNode;
 	}
 
 	throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Node type %s not found"), *NodeTypeName)));
 }
 
-void GraphUtils::AddDynamicCastNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& PinTypeName)
+UEdGraphNode* GraphUtils::AddDynamicCastNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& PinTypeName)
 {
 	if (!Blueprint || !Graph)
 		throw std::runtime_error("Blueprint or Graph is null");
@@ -416,9 +425,10 @@ void GraphUtils::AddDynamicCastNodeToGraph(UBlueprint* Blueprint, UEdGraph* Grap
 	SetNewNodePosition(Graph, CastNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return CastNode;
 }
 
-void GraphUtils::AddClassCastNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& PinTypeName)
+UEdGraphNode* GraphUtils::AddClassCastNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& PinTypeName)
 {
 	if (!Blueprint || !Graph)
 		throw std::runtime_error("Blueprint or Graph is null");
@@ -432,9 +442,10 @@ void GraphUtils::AddClassCastNodeToGraph(UBlueprint* Blueprint, UEdGraph* Graph,
 	SetNewNodePosition(Graph, CastNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return CastNode;
 }
 
-void GraphUtils::AddByteToEnumNodeCastToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& PinTypeName)
+UEdGraphNode* GraphUtils::AddByteToEnumNodeCastToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& PinTypeName)
 {
 	if (!Blueprint || !Graph)
 		throw std::runtime_error("Blueprint or Graph is null");
@@ -449,6 +460,7 @@ void GraphUtils::AddByteToEnumNodeCastToGraph(UBlueprint* Blueprint, UEdGraph* G
 	SetNewNodePosition(Graph, CastNode);
 	NodeCreator.Finalize();
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return CastNode;
 }
 
 

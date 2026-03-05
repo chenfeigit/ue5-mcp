@@ -8,6 +8,8 @@
 #include "UE5_MCP/API/DTO/Graph/SetPinDefaultValueReq.h"
 #include "UE5_MCP/Core/BPUtils.h"
 #include "UE5_MCP/Core/GraphUtils.h"
+#include "EdGraph/EdGraphNode.h"
+#include "Serialization/JsonWriter.h"
 
 /** Resolve graph by name: event graph (UbergraphPages) first, then function graph (FunctionGraphs). */
 static UEdGraph* GetGraphByName(UBlueprint* BP, const FString& GraphName)
@@ -74,8 +76,28 @@ static void SendOk(const FHttpResultCallback& OnComplete)
 	OnComplete(MoveTemp(Resp));
 }
 
-/** Handler for node types that require ExtraInfo (struct/class/enum name or comment text). */
-using FAddExtraInfoNodeFunc = void(*)(UBlueprint*, UEdGraph*, const FString&);
+/** Sends success response with new node ID as JSON: {"ok":true,"nodeId":"..."}. Used by add_node_to_graph. */
+static void SendAddNodeSuccess(const FHttpResultCallback& OnComplete, UEdGraphNode* Node)
+{
+	if (!Node)
+	{
+		SendOk(OnComplete);
+		return;
+	}
+	FString JsonStr;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonStr);
+	Writer->WriteObjectStart();
+	Writer->WriteValue(TEXT("ok"), true);
+	Writer->WriteValue(TEXT("nodeId"), Node->NodeGuid.ToString());
+	Writer->WriteObjectEnd();
+	Writer->Close();
+	TUniquePtr<FHttpServerResponse> Resp = FHttpServerResponse::Create(JsonStr, TEXT("application/json"));
+	Resp->Code = EHttpServerResponseCodes::Ok;
+	OnComplete(MoveTemp(Resp));
+}
+
+/** Handler for node types that require ExtraInfo (struct/class/enum name or comment text). Returns the new node. */
+using FAddExtraInfoNodeFunc = UEdGraphNode*(*)(UBlueprint*, UEdGraph*, const FString&);
 
 static const TMap<FString, TPair<FString, FAddExtraInfoNodeFunc>>& GetExtraInfoNodeTable()
 {
@@ -89,10 +111,11 @@ static const TMap<FString, TPair<FString, FAddExtraInfoNodeFunc>>& GetExtraInfoN
 	return Table;
 }
 
-/** Returns true if ResolvedType was handled (node added or validation error set in OutError). */
+/** Returns true if ResolvedType was handled (node added or validation error set in OutError). On success, OutNode is set. */
 static bool TryAddExtraInfoNode(UBlueprint* BP, UEdGraph* Graph, const FString& ResolvedType,
-	const FGenericAddNodeToGraphReq& Body, FString& OutError)
+	const FGenericAddNodeToGraphReq& Body, FString& OutError, UEdGraphNode*& OutNode)
 {
+	OutNode = nullptr;
 	if (const TPair<FString, FAddExtraInfoNodeFunc>* Handler = GetExtraInfoNodeTable().Find(ResolvedType))
 	{
 		if (Body.ExtraInfo.IsEmpty()) { OutError = Handler->Key; return true; }
@@ -101,12 +124,12 @@ static bool TryAddExtraInfoNode(UBlueprint* BP, UEdGraph* Graph, const FString& 
 		{
 			ExtraInfo = ResolveClassName(ExtraInfo);
 		}
-		Handler->Value(BP, Graph, ExtraInfo);
+		OutNode = Handler->Value(BP, Graph, ExtraInfo);
 		return true;
 	}
 	if (ResolvedType == TEXT("K2Node_Comment"))
 	{
-		GraphUtils::AddCommentNodeToGraph(BP, Graph, Body.ExtraInfo);
+		OutNode = GraphUtils::AddCommentNodeToGraph(BP, Graph, Body.ExtraInfo);
 		return true;
 	}
 	return false;
@@ -141,18 +164,18 @@ bool AddNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallb
 	auto Fail = [&OnComplete](const FString& Msg) { SendError(OnComplete, Msg); };
 	try
 	{
-		FGenericAddNodeToGraphReq body = Utils::BufferToJson<FGenericAddNodeToGraphReq>(Req.Body);
-		if (body.BpPath.IsEmpty()) { Fail(TEXT("Error: BpPath is required")); return true; }
-		if (body.NodeTypeName.IsEmpty()) { Fail(TEXT("Error: NodeTypeName is required")); return true; }
+		FGenericAddNodeToGraphReq Body = Utils::BufferToJson<FGenericAddNodeToGraphReq>(Req.Body);
+		if (Body.BpPath.IsEmpty()) { Fail(TEXT("Error: BpPath is required")); return true; }
+		if (Body.NodeTypeName.IsEmpty()) { Fail(TEXT("Error: NodeTypeName is required")); return true; }
 
-		UBlueprint* BP = BPUtils::LoadBlueprint(body.BpPath);
+		UBlueprint* BP = BPUtils::LoadBlueprint(Body.BpPath);
 		if (!BP) { Fail(TEXT("Error: Blueprint not found")); return true; }
 
-		FString GraphName = body.GraphName.IsEmpty() ? TEXT("EventGraph") : body.GraphName;
+		FString GraphName = Body.GraphName.IsEmpty() ? TEXT("EventGraph") : Body.GraphName;
 		UEdGraph* Graph = GetGraphByName(BP, GraphName);
 		if (!Graph) { Fail(FString::Printf(TEXT("Error: Graph %s not found"), *GraphName)); return true; }
 
-		const FString& NodeTypeName = body.NodeTypeName;
+		const FString& NodeTypeName = Body.NodeTypeName;
 
 		// ClassName::FunctionName -> AddFunctionCallToGraph
 		if (NodeTypeName.Contains(TEXT("::")))
@@ -165,8 +188,8 @@ bool AddNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallb
 				FString FunctionName = Parts[1].TrimStartAndEnd();
 				if (!ClassToCall.IsEmpty() && !FunctionName.IsEmpty())
 				{
-					GraphUtils::AddFunctionCallToGraph(BP, Graph, ClassToCall, FunctionName);
-					SendOk(OnComplete);
+					UEdGraphNode* Node = GraphUtils::AddFunctionCallToGraph(BP, Graph, ClassToCall, FunctionName);
+					SendAddNodeSuccess(OnComplete, Node);
 					return true;
 				}
 			}
@@ -177,55 +200,56 @@ bool AddNodeToGraphHandler(const FHttpServerRequest& Req, const FHttpResultCallb
 		// CallFunction: require functionName or return explicit error
 		if (ResolvedType == TEXT("K2Node_CallFunction"))
 		{
-			FString ClassToCall = body.ClassToCall.IsEmpty() ? FString() : ResolveClassName(body.ClassToCall.TrimStartAndEnd());
-			FString FunctionName = body.FunctionName.IsEmpty() ? FString() : body.FunctionName.TrimStartAndEnd();
+			FString ClassToCall = Body.ClassToCall.IsEmpty() ? FString() : ResolveClassName(Body.ClassToCall.TrimStartAndEnd());
+			FString FunctionName = Body.FunctionName.IsEmpty() ? FString() : Body.FunctionName.TrimStartAndEnd();
 			if (FunctionName.IsEmpty())
 			{
 				Fail(TEXT("Error: CallFunction requires functionName (and optionally classToCall). Use node_type_name 'ClassName::FunctionName' or provide functionName (+ classToCall)."));
 				return true;
 			}
-			ClassToCall.IsEmpty() ? GraphUtils::AddFunctionCallToGraph(BP, Graph, FunctionName)
+			UEdGraphNode* Node = ClassToCall.IsEmpty() ? GraphUtils::AddFunctionCallToGraph(BP, Graph, FunctionName)
 				: GraphUtils::AddFunctionCallToGraph(BP, Graph, ClassToCall, FunctionName);
-			SendOk(OnComplete);
+			SendAddNodeSuccess(OnComplete, Node);
 			return true;
 		}
 
 		// VariableGet / VariableSet
 		if (ResolvedType == TEXT("K2Node_VariableGet") || ResolvedType == TEXT("K2Node_VariableSet"))
 		{
-			FString VarName = body.VarName.IsEmpty() ? body.MemberName : body.VarName;
+			FString VarName = Body.VarName.IsEmpty() ? Body.MemberName : Body.VarName;
 			if (VarName.IsEmpty()) { Fail(TEXT("Error: VarName is required for variable node")); return true; }
-			(body.bIsSetter || ResolvedType == TEXT("K2Node_VariableSet"))
+			UEdGraphNode* Node = (Body.bIsSetter || ResolvedType == TEXT("K2Node_VariableSet"))
 				? GraphUtils::AddSetVariableNodeToGraph(BP, Graph, VarName)
 				: GraphUtils::AddGetVariableNodeToGraph(BP, Graph, VarName);
-			SendOk(OnComplete);
+			SendAddNodeSuccess(OnComplete, Node);
 			return true;
 		}
 
 		// Event / CustomEvent
 		if (ResolvedType == TEXT("K2Node_Event") || ResolvedType == TEXT("K2Node_CustomEvent"))
 		{
-			FString EventName = body.EventName.IsEmpty() ? body.MemberName : body.EventName;
+			FString EventName = Body.EventName.IsEmpty() ? Body.MemberName : Body.EventName;
 			if (EventName.IsEmpty()) { Fail(TEXT("Error: EventName is required for event node")); return true; }
-			(body.bIsCustomEvent || ResolvedType == TEXT("K2Node_CustomEvent"))
-				? GraphUtils::AddCustomEventToGraph(BP, Graph, EventName, body.EventSignature)
+			UEdGraphNode* Node = (Body.bIsCustomEvent || ResolvedType == TEXT("K2Node_CustomEvent"))
+				? GraphUtils::AddCustomEventToGraph(BP, Graph, EventName, Body.EventSignature)
 				: GraphUtils::AddEventToGraph(BP, Graph, EventName);
-			SendOk(OnComplete);
+			SendAddNodeSuccess(OnComplete, Node);
 			return true;
 		}
 
 		// MakeStruct / BreakStruct / DynamicCast / ClassCast / EnumCast / Comment (table-driven)
 		FString ExtraError;
-		if (TryAddExtraInfoNode(BP, Graph, ResolvedType, body, ExtraError))
+		UEdGraphNode* ExtraNode = nullptr;
+		if (TryAddExtraInfoNode(BP, Graph, ResolvedType, Body, ExtraError, ExtraNode))
 		{
 			if (!ExtraError.IsEmpty()) { Fail(ExtraError); return true; }
-			SendOk(OnComplete);
+			SendAddNodeSuccess(OnComplete, ExtraNode);
 			return true;
 		}
 
 		// Fallback: K2 class or macro
-		GraphUtils::AddNodeByNameToGraph(BP, Graph, ResolvedType);
-		SendOk(OnComplete);
+		UEdGraphNode* Node = GraphUtils::AddNodeByNameToGraph(BP, Graph, ResolvedType);
+		SendAddNodeSuccess(OnComplete, Node);
 		return true;
 	}
 	catch (std::runtime_error& e)
