@@ -95,55 +95,57 @@ def delete_function(bp_path: str, function_name: str) -> str:
 
 
 @mcp.tool()
-def add_function_call_to_graph(bp_path: str, graph_name: str, function_name: str, class_to_call: str) -> str:
-    """Add a function call node to the specified graph in the Blueprint.
+def add_node_to_graph(
+    bp_path: str,
+    node_type_name: str,
+    graph_name: str = "EventGraph",
+    extra_info: str = None,
+    class_to_call: str = None,
+    function_name: str = None,
+    var_name: str = None,
+    is_setter: bool = None,
+    event_name: str = None,
+    is_custom_event: bool = None,
+    event_signature: str = None,
+    member_name: str = None,
+) -> str:
+    """Add any supported node to the specified graph (unified interface).
 
-    bp_path: Must be a valid Blueprint path
-    graph_name: Must be a valid graph name (e.g., 'EventGraph').
-    function_name: Must be a valid existing function name, you can use get_blueprint_functions to get the list of functions.
-    class_to_call: Must be a valid Unreal Engine class name, leave empty to call function in the same Blueprint.
+    Recommended: call get_supported_nodes first, then use a returned node_type_name or 'ClassName::FunctionName' here.
+
+    bp_path: Must be a valid Blueprint path.
+    node_type_name: Node type: K2 class (e.g. K2Node_IfThenElse), alias (CallFunction, Branch, VariableGet, Event, MakeStruct, ...), macro name (ForEachLoop), or 'ClassName::FunctionName' for function calls.
+    graph_name: Graph name (default EventGraph). Omit or pass empty to use EventGraph.
+    extra_info: For MakeStruct/BreakStruct: struct type (e.g. Vector). For DynamicCast/ClassCast: class name. For EnumCast: enum name. For Comment: comment text.
+    class_to_call: For CallFunction: class to call (optional; omit for same Blueprint).
+    function_name: For CallFunction: function name (required when node_type_name is CallFunction/K2Node_CallFunction).
+    var_name: For VariableGet/VariableSet: variable name.
+    is_setter: For variable node: True = setter, False = getter.
+    event_name: For Event/CustomEvent: event name.
+    is_custom_event: For event: True = custom event, False = built-in.
+    event_signature: For custom event: signature string in C++ style.
+    member_name: Optional generic member name; server may map to var_name/event_name/function_name by node type.
     """
-    url = f"{BASE_URL}/add_function_call_to_graph"
-    body = {"BpPath": bp_path, "GraphName": graph_name, "FunctionName": function_name}
+    url = f"{BASE_URL}/add_node_to_graph"
+    body = {"BpPath": bp_path, "GraphName": graph_name or "EventGraph", "NodeTypeName": node_type_name}
+    if extra_info is not None:
+        body["ExtraInfo"] = extra_info
     if class_to_call:
         body["ClassToCall"] = class_to_call
-    response = httpx.post(url, json=body)
-    return response.text
-
-
-@mcp.tool()
-def add_event_to_graph(bp_path: str, graph_name: str, event_name: str, is_custom: bool = False,
-                       event_signature: str = None) -> str:
-    """Add an event (custom or built-in) to the specified graph in the Blueprint.
-    Caution: it doesn't check duplicated event names, may cause compile errors
-
-    bp_path: Must be a valid Blueprint path
-    graph_name: Must be a valid graph name (e.g., 'EventGraph').
-    event_name: Must be a valid event name
-    for custom event, it can be any name you like but cannot conflict with existing function or event names.
-    for built-in event, it must be a valid built-in event name, you can use get_blueprint_functions to get the list of functions, functions starting with 'Receive' are built-in events.
-    is_custom: Set to True for custom events, False for built-in events.
-    event_signature: Required only for custom events, must be a valid signature string in c++ style.
-    """
-    url = f"{BASE_URL}/add_event_to_graph"
-    body = {"BpPath": bp_path, "GraphName": graph_name, "EventName": event_name, "bIsCustomEvent": is_custom}
-    if is_custom and event_signature:
+    if function_name is not None:
+        body["FunctionName"] = function_name
+    if var_name is not None:
+        body["VarName"] = var_name
+    if is_setter is not None:
+        body["bIsSetter"] = is_setter
+    if event_name is not None:
+        body["EventName"] = event_name
+    if is_custom_event is not None:
+        body["bIsCustomEvent"] = is_custom_event
+    if event_signature is not None:
         body["EventSignature"] = event_signature
-    response = httpx.post(url, json=body)
-    return response.text
-
-
-@mcp.tool()
-def add_variable_to_graph(bp_path: str, graph_name: str, var_name: str, is_setter: bool) -> str:
-    """Add a variable node (setter or getter) to the specified graph in the Blueprint.
-
-    bp_path: Must be a valid Blueprint path (e.g., '/Game/Test/MyBlueprint').
-    graph_name: Must be a valid graph name (e.g., 'EventGraph').
-    var_name: Must be a valid variable name (e.g., 'Test' or 'DefaultSceneRoot').
-    is_setter: Set to True for a setter node, False for a getter node.
-    """
-    url = f"{BASE_URL}/add_variable_to_graph"
-    body = {"BpPath": bp_path, "GraphName": graph_name, "VarName": var_name, "bIsSetter": is_setter}
+    if member_name is not None:
+        body["MemberName"] = member_name
     response = httpx.post(url, json=body)
     return response.text
 
@@ -220,8 +222,9 @@ def get_supported_nodes() -> str:
     - Macro names from engine StandardMacros (e.g. 'ForEachLoop'),
     - Library function entries in the form 'ClassName::FunctionName' (e.g. 'Engine.BlueprintMapLibrary::Map_Add').
 
-    All entries can be added via add_generic_node_to_graph(bp_path, graph_name, node_type_name)
-    using the exact string from this list as node_type_name (one unified interface).
+    Recommended flow: call get_supported_nodes first, then use add_node_to_graph with the exact node_type_name
+    or a friendly alias (CallFunction, Branch, VariableGet, Event, MakeStruct, etc.). For function calls you can
+    use either node_type_name 'ClassName::FunctionName' or node_type_name 'CallFunction' with function_name (and optional class_to_call).
     """
     url = f"{BASE_URL}/get_supported_nodes"
     response = httpx.get(url)
@@ -344,109 +347,6 @@ def set_pin_default_value(bp_path: str, graph_name: str, node_id: str, pin_name:
     url = f"{BASE_URL}/set_pin_default_value"
     body = {"BpPath": bp_path, "GraphName": graph_name, "NodeId": node_id, "PinName": pin_name,
             "DefaultValue": default_value}
-    response = httpx.post(url, json=body)
-    return response.text
-
-
-@mcp.tool()
-def add_generic_node_to_graph(bp_path: str, graph_name: str, node_type_name: str) -> str:
-    """Add a node to the specified graph by type name (unified interface for all supported nodes).
-
-    Use this for any entry returned by get_supported_nodes: K2 node class names, macro names,
-    or library function entries (ClassName::FunctionName, e.g. 'Engine.BlueprintMapLibrary::Map_Add').
-    If a dedicated tool exists for a specific node type, you may use that instead.
-
-    bp_path: Must be a valid Blueprint path.
-    graph_name: Must be a valid graph name (e.g. 'EventGraph').
-    node_type_name: Any string from get_supported_nodes (e.g. 'K2Node_IfThenElse', 'ForEachLoop', 'Engine.BlueprintMapLibrary::Map_Add').
-    """
-    url = f"{BASE_URL}/add_generic_node_to_graph"
-    body = {"BpPath": bp_path, "GraphName": graph_name, "NodeTypeName": node_type_name}
-    response = httpx.post(url, json=body)
-    return response.text
-
-
-@mcp.tool()
-def add_make_struct_node_to_graph(bp_path: str, graph_name: str, extra_info: str) -> str:
-    """Add a make struct node to the specified graph.
-
-    bp_path: Must be a valid Blueprint path.
-    graph_name: Must be a valid graph name (e.g., 'EventGraph').
-    extra_info: Must be a valid struct type (e.g., 'Vector').
-    """
-    url = f"{BASE_URL}/add_make_struct_node_to_graph"
-    body = {"BpPath": bp_path, "GraphName": graph_name, "ExtraInfo": extra_info}
-    response = httpx.post(url, json=body)
-    return response.text
-
-
-@mcp.tool()
-def add_break_struct_node_to_graph(bp_path: str, graph_name: str, extra_info: str) -> str:
-    """Add a break struct node to the specified graph.
-
-    bp_path: Must be a valid Blueprint path.
-    graph_name: Must be a valid graph name (e.g., 'EventGraph').
-    extra_info: Must be a valid struct type (e.g., 'Vector').
-    """
-    url = f"{BASE_URL}/add_break_struct_node_to_graph"
-    body = {"BpPath": bp_path, "GraphName": graph_name, "ExtraInfo": extra_info}
-    response = httpx.post(url, json=body)
-    return response.text
-
-
-@mcp.tool()
-def add_dynamic_cast_node_to_graph(bp_path: str, graph_name: str, extra_info: str) -> str:
-    """Add a dynamic cast node to the specified graph.
-
-    bp_path: Must be a valid Blueprint path.
-    graph_name: Must be a valid graph name (e.g., 'EventGraph').
-    extra_info: Must be a valid class name for casting (e.g., 'Actor').
-    """
-    url = f"{BASE_URL}/add_dynamic_cast_node_to_graph"
-    body = {"BpPath": bp_path, "GraphName": graph_name, "ExtraInfo": extra_info}
-    response = httpx.post(url, json=body)
-    return response.text
-
-
-@mcp.tool()
-def add_class_cast_node_to_graph(bp_path: str, graph_name: str, extra_info: str) -> str:
-    """Add a class cast node to the specified graph.
-
-    bp_path: Must be a valid Blueprint path.
-    graph_name: Must be a valid graph name (e.g., 'EventGraph').
-    extra_info: Must be a valid class name for casting (e.g., 'Actor').
-    """
-    url = f"{BASE_URL}/add_class_cast_node_to_graph"
-    body = {"BpPath": bp_path, "GraphName": graph_name, "ExtraInfo": extra_info}
-    response = httpx.post(url, json=body)
-    return response.text
-
-
-@mcp.tool()
-def add_enum_cast_node_to_graph(bp_path: str, graph_name: str, extra_info: str) -> str:
-    """Add a byte to enum cast node to the specified graph.
-
-    bp_path: Must be a valid Blueprint path.
-    graph_name: Must be a valid graph name (e.g., 'EventGraph').
-    extra_info: Must be a valid enum name for casting (e.g., 'EPhysicalSurface').
-    """
-    url = f"{BASE_URL}/add_enum_cast_node_to_graph"
-    body = {"BpPath": bp_path, "GraphName": graph_name, "ExtraInfo": extra_info}
-    response = httpx.post(url, json=body)
-    return response.text
-
-
-@mcp.tool()
-def add_math_node_to_graph(bp_path: str, graph_name: str, function_name: str) -> str:
-    """Add a math node to the specified graph.
-
-    bp_path: Must be a valid Blueprint path.
-    graph_name: Must be a valid graph name (e.g., 'EventGraph').
-    function_name: Must be a valid math function name in UKismetMathLibrary (e.g., 'Add_DoubleDouble').
-    Common math function names in format Operation_OperandType1OperandType2 in camel style.
-    """
-    url = f"{BASE_URL}/add_math_node_to_graph"
-    body = {"BpPath": bp_path, "GraphName": graph_name, "FunctionName": function_name}
     response = httpx.post(url, json=body)
     return response.text
 

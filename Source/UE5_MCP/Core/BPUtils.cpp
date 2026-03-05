@@ -1,4 +1,4 @@
-﻿#include "BPUtils.h"
+#include "BPUtils.h"
 
 #include "ClassUtils.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -16,7 +16,10 @@
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
+#include "Engine/SCS_Node.h"
+#include "Engine/SimpleConstructionScript.h"
 #include "EdGraph/EdGraphPin.h"
+#include "Serialization/JsonWriter.h"
 
 // TODO: Add support for function metadata (e.g. BlueprintCallable, Category, etc.) ?
 
@@ -400,8 +403,6 @@ void BPUtils::SetVariableDefaultValueInBlueprint(UBlueprint* Blueprint, const FS
     FKismetEditorUtilities::CompileBlueprint(Blueprint);
 }
 
-#include "Serialization/JsonWriter.h"
-
 FString BPUtils::GetBlueprintGraphJson(UEdGraph* Graph)
 {
     if (!Graph)
@@ -525,10 +526,6 @@ FString BPUtils::GetBlueprintGraphJson(UEdGraph* Graph)
 
     return Output;
 }
-
-
-#include "Engine/SimpleConstructionScript.h"
-#include "Engine/SCS_Node.h"
 
 void BPUtils::AddComponentToBlueprintByName(UBlueprint* Blueprint, 
     const FString& ComponentClassName,

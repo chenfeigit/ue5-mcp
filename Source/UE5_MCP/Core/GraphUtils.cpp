@@ -18,7 +18,9 @@
 #include "K2Node_SwitchEnum.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
+#include "EdGraph/EdGraph.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "Kismet/KismetMathLibrary.h"
 #include "PinUtils.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/Field.h"
@@ -68,6 +70,8 @@ void GraphUtils::AddFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, 
         throw std::runtime_error("Blueprint's GeneratedClass is null, please compile the Blueprint first");
 
     UFunction* TargetFunction = BPClass->FindFunctionByName(*FunctionName);
+    if (!TargetFunction && !FunctionName.StartsWith(TEXT("K2_")))
+        TargetFunction = BPClass->FindFunctionByName(*(FString(TEXT("K2_")) + FunctionName));
     if (!TargetFunction)
         throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Function %s not found in Blueprint class"), *FunctionName)));
 
@@ -91,6 +95,8 @@ void GraphUtils::AddFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, 
 		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Class %s not found"), *ClassToCall)));
 
 	UFunction* TargetFunction = TargetClass->FindFunctionByName(*FunctionName);
+	if (!TargetFunction && !FunctionName.StartsWith(TEXT("K2_")))
+		TargetFunction = TargetClass->FindFunctionByName(*(FString(TEXT("K2_")) + FunctionName));
 	if (!TargetFunction)
 		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Function %s not found in class %s"), *FunctionName, *ClassToCall)));
 
@@ -102,8 +108,6 @@ void GraphUtils::AddFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 }
 
-#include "Kismet/KismetMathLibrary.h"
-
 void GraphUtils::AddMathFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Graph, const FString& FunctionName)
 {
 	if (!Blueprint || !Graph)
@@ -111,6 +115,8 @@ void GraphUtils::AddMathFunctionCallToGraph(UBlueprint* Blueprint, UEdGraph* Gra
 
 	UClass* MathClass = UKismetMathLibrary::StaticClass();
 	UFunction* TargetFunction = MathClass->FindFunctionByName(*FunctionName);
+	if (!TargetFunction && !FunctionName.StartsWith(TEXT("K2_")))
+		TargetFunction = MathClass->FindFunctionByName(*(FString(TEXT("K2_")) + FunctionName));
 	if (!TargetFunction)
 		throw std::runtime_error(TCHAR_TO_UTF8(*FString::Printf(TEXT("Function %s not found in KismetMathLibrary"), *FunctionName)));
 	
@@ -198,10 +204,6 @@ void GraphUtils::AddCustomEventToGraph(
 
     FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 }
-
-#include "EdGraph/EdGraph.h"
-#include "EdGraphSchema_K2.h"
-
 
 void GraphUtils::AddGetVariableNodeToGraph(
     UBlueprint* Blueprint, UEdGraph* Graph, const FString& VarName)

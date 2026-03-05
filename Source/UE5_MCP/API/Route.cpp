@@ -25,17 +25,9 @@ void Router::Bind(TSharedPtr<IHttpRouter> Router)
 		EHttpServerRequestVerbs::VERB_POST,
 		FHttpRequestHandler::CreateStatic(DeleteFunctionHandler));
 
-	Router->BindRoute(FHttpPath("/add_function_call_to_graph"),
-        EHttpServerRequestVerbs::VERB_POST,
-        FHttpRequestHandler::CreateStatic(AddFunctionCallToGraphHandler));
-
-	Router->BindRoute(FHttpPath("/add_event_to_graph"),
-        EHttpServerRequestVerbs::VERB_POST,
-        FHttpRequestHandler::CreateStatic(AddEventToGraphHandler));
-
-	Router->BindRoute(FHttpPath("/add_variable_to_graph"),
-        EHttpServerRequestVerbs::VERB_POST,
-        FHttpRequestHandler::CreateStatic(AddVariableToGraphHandler));
+	Router->BindRoute(FHttpPath("/add_node_to_graph"),
+		EHttpServerRequestVerbs::VERB_POST,
+		FHttpRequestHandler::CreateStatic(AddNodeToGraphHandler));
 
 	Router->BindRoute(FHttpPath("/get_blueprint_variables"),
         EHttpServerRequestVerbs::VERB_GET,
@@ -92,47 +84,6 @@ void Router::Bind(TSharedPtr<IHttpRouter> Router)
 	Router->BindRoute(FHttpPath("/set_pin_default_value"),
 		EHttpServerRequestVerbs::VERB_POST,
 		FHttpRequestHandler::CreateStatic(SetPinDefaultValueHandler));
-
-	Router->BindRoute(FHttpPath("/add_generic_node_to_graph"),
-		EHttpServerRequestVerbs::VERB_POST,
-		FHttpRequestHandler::CreateStatic(AddGenericNodeToGraphHandler));
-
-	Router->BindRoute(FHttpPath("/add_make_struct_node_to_graph"),
-		EHttpServerRequestVerbs::VERB_POST,
-		FHttpRequestHandler::CreateStatic(AddMakeStructNodeToGraphHandler));
-
-	Router->BindRoute(FHttpPath("/add_break_struct_node_to_graph"),
-		EHttpServerRequestVerbs::VERB_POST,
-		FHttpRequestHandler::CreateStatic(AddBreakStructNodeToGraphHandler));
-
-	/*
-	Router->BindRoute(FHttpPath("/add_switch_enum_node_to_graph"),
-		EHttpServerRequestVerbs::VERB_POST,
-		FHttpRequestHandler::CreateStatic(AddSwitchEnumNodeToGraphHandler));
-		*/
-
-	Router->BindRoute(FHttpPath("/add_dynamic_cast_node_to_graph"),
-		EHttpServerRequestVerbs::VERB_POST,
-		FHttpRequestHandler::CreateStatic(AddDynamicCastNodeToGraphHandler));
-
-	Router->BindRoute(FHttpPath("/add_class_cast_node_to_graph"),
-		EHttpServerRequestVerbs::VERB_POST,
-		FHttpRequestHandler::CreateStatic(AddClassCastNodeToGraphHandler));
-
-	Router->BindRoute(FHttpPath("/add_enum_cast_node_to_graph"),
-		EHttpServerRequestVerbs::VERB_POST,
-		FHttpRequestHandler::CreateStatic(AddEnumCastNodeToGraphHandler));
-
-	
-	Router->BindRoute(FHttpPath("/add_math_node_to_graph"),
-		EHttpServerRequestVerbs::VERB_POST,
-		FHttpRequestHandler::CreateStatic(AddMathNodeToGraphHandler));
-
-	/*
-	Router->BindRoute(FHttpPath("/add_comment_node_to_graph"),
-		EHttpServerRequestVerbs::VERB_POST,
-		FHttpRequestHandler::CreateStatic(AddCommentNodeToGraphHandler));
-		*/
 
 	Router->BindRoute(FHttpPath("/add_component_to_bp"),
 		EHttpServerRequestVerbs::VERB_POST,

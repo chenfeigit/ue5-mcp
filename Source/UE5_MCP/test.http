@@ -38,58 +38,72 @@ Content-Type: application/json
   "FunctionName": "MyFunction"
 }
 
-### Add Function Call to Graph
-POST http://localhost:8080/add_function_call_to_graph
+### Add Node to Graph (unified) — Function call via ClassName::FunctionName
+POST http://localhost:8080/add_node_to_graph
 Content-Type: application/json
 
 {
   "BpPath": "/Game/Test/MyBlueprint",
   "GraphName": "EventGraph",
+  "NodeTypeName": "/Script/Engine.Actor::K2_GetActorLocation"
+}
+
+### Add Node — Function call (same BP) via node_type_name + function_name
+POST http://localhost:8080/add_node_to_graph
+Content-Type: application/json
+
+{
+  "BpPath": "/Game/Test/MyBlueprint",
+  "GraphName": "EventGraph",
+  "NodeTypeName": "CallFunction",
   "FunctionName": "MyFunction"
 }
 
-### Add Custom Event to Graph
-POST http://localhost:8080/add_event_to_graph
+### Add Node — Custom Event
+POST http://localhost:8080/add_node_to_graph
 Content-Type: application/json
 
 {
   "BpPath": "/Game/Test/MyBlueprint",
   "GraphName": "EventGraph",
+  "NodeTypeName": "CustomEvent",
   "EventName": "MyEvent",
   "bIsCustomEvent": true,
   "EventSignature": "int32 Param1, float Param2"
 }
 
-
-### Add Event to Graph
-POST http://localhost:8080/add_event_to_graph
+### Add Node — Built-in Event
+POST http://localhost:8080/add_node_to_graph
 Content-Type: application/json
 
 {
   "BpPath": "/Game/Test/MyBlueprint",
   "GraphName": "EventGraph",
+  "NodeTypeName": "Event",
   "EventName": "ReceiveHit",
   "bIsCustomEvent": false
 }
 
-### Add Variable to Graph
-POST http://localhost:8080/add_variable_to_graph
+### Add Node — Variable setter
+POST http://localhost:8080/add_node_to_graph
 Content-Type: application/json
 
 {
   "BpPath": "/Game/Test/MyBlueprint",
   "GraphName": "EventGraph",
+  "NodeTypeName": "VariableSet",
   "VarName": "Test",
   "bIsSetter": true
 }
 
-### Add Variable to Graph
-POST http://localhost:8080/add_variable_to_graph
+### Add Node — Variable getter
+POST http://localhost:8080/add_node_to_graph
 Content-Type: application/json
 
 {
   "BpPath": "/Game/Test/MyBlueprint",
   "GraphName": "EventGraph",
+  "NodeTypeName": "VariableGet",
   "VarName": "DefaultSceneRoot",
   "bIsSetter": false
 }
@@ -107,7 +121,7 @@ GET http://localhost:8080/get_graph?bp_path=/Game/Test/MyBlueprint&graph_name=Ev
 ### Compile Blueprint
 POST http://localhost:8080/compile_blueprint?bp_path=/Game/Test/MyBlueprint
 
-### Get Supported Node
+### Get Supported Nodes (call before add_node_to_graph to see valid node_type_name / ClassName::FunctionName)
 GET http://localhost:8080/get_supported_nodes
 
 ### Add Variable to Blueprint
@@ -186,8 +200,8 @@ Content-Type: application/json
   "DefaultValue": "100, 200, 300"
 }
 
-### Add Generic Node to Graph
-POST http://localhost:8080/add_generic_node_to_graph
+### Add Node — K2 / macro by type name
+POST http://localhost:8080/add_node_to_graph
 Content-Type: application/json
 
 {
@@ -196,64 +210,71 @@ Content-Type: application/json
   "NodeTypeName": "K2Node_PlayAnimation"
 }
 
-### Add Make Struct Node to Graph
-POST http://localhost:8080/add_make_struct_node_to_graph
+### Add Node — MakeStruct (alias + ExtraInfo)
+POST http://localhost:8080/add_node_to_graph
 Content-Type: application/json
 
 {
   "BpPath": "/Game/Test/MyBlueprint",
   "GraphName": "EventGraph",
+  "NodeTypeName": "MakeStruct",
   "ExtraInfo": "Vector"
 }
 
-### Add Break Struct Node to Graph
-POST http://localhost:8080/add_break_struct_node_to_graph
+### Add Node — BreakStruct
+POST http://localhost:8080/add_node_to_graph
 Content-Type: application/json
 
 {
   "BpPath": "/Game/Test/MyBlueprint",
   "GraphName": "EventGraph",
+  "NodeTypeName": "BreakStruct",
   "ExtraInfo": "Vector"
 }
 
-### Add Dynamic Cast Node to Graph
-POST http://localhost:8080/add_dynamic_cast_node_to_graph
+### Add Node — DynamicCast
+POST http://localhost:8080/add_node_to_graph
 Content-Type: application/json
 
 {
   "BpPath": "/Game/Test/MyBlueprint",
   "GraphName": "EventGraph",
-    "ExtraInfo": "Actor"
-}
-
-### Add Class Cast Node to Graph
-POST http://localhost:8080/add_class_cast_node_to_graph
-Content-Type: application/json
-
-{
-  "BpPath": "/Game/Test/MyBlueprint",
-  "GraphName": "EventGraph",
+  "NodeTypeName": "DynamicCast",
   "ExtraInfo": "Actor"
 }
 
-### Add Enum Cast Node to Graph
-POST http://localhost:8080/add_enum_cast_node_to_graph
+### Add Node — ClassCast
+POST http://localhost:8080/add_node_to_graph
 Content-Type: application/json
 
 {
   "BpPath": "/Game/Test/MyBlueprint",
   "GraphName": "EventGraph",
-    "ExtraInfo": "EPhysicalSurface"
+  "NodeTypeName": "ClassCast",
+  "ExtraInfo": "Actor"
 }
 
-### Add Math Node to Graph
-POST http://localhost:8080/add_math_node_to_graph
+### Add Node — EnumCast
+POST http://localhost:8080/add_node_to_graph
 Content-Type: application/json
 
 {
-    "BpPath": "/Game/Test/MyBlueprint",
-    "GraphName": "EventGraph",
-    "FunctionName": "Add_DoubleDouble"
+  "BpPath": "/Game/Test/MyBlueprint",
+  "GraphName": "EventGraph",
+  "NodeTypeName": "EnumCast",
+  "ExtraInfo": "EPhysicalSurface"
+}
+
+### Add Node — Math (ClassName::FunctionName or CallFunction + function_name)
+POST http://localhost:8080/add_node_to_graph
+Content-Type: application/json
+
+{
+  "BpPath": "/Game/Test/MyBlueprint",
+  "GraphName": "EventGraph",
+  "NodeTypeName": "CallFunction",
+  "ClassToCall": "KismetMathLibrary",
+  "FunctionName": "Add_DoubleDouble"
 }
 
 ### Get Components of Blueprint
